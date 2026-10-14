@@ -153,6 +153,22 @@ import Testing
         #expect(failure(502, "Bad Gateway") == .serverError(provider: "DeepSeek", status: 502, detail: "Bad Gateway"))
     }
 
+    @Test func networkErrorsReadPlainly() {
+        func network(_ code: Int) -> AIFailure? {
+            AIFailure.from(networkCode: code, host: "api.deepseek.com", provider: "DeepSeek", seconds: 30,
+                           description: "Something odd")
+        }
+        #expect(network(-999) == nil)
+        #expect(network(-1009) == .offline)
+        #expect(network(-1001) == .timedOut(provider: "DeepSeek", seconds: 30))
+        #expect(network(-1001)?.message == "DeepSeek didn't answer within 30 seconds. Try again.")
+        #expect(network(-1003) == .unreachable(host: "api.deepseek.com"))
+        #expect(network(-1004) == .unreachable(host: "api.deepseek.com"))
+        #expect(network(-1202)?.message.contains("secure connection to api.deepseek.com") == true)
+        #expect(network(-1) == .network("Something odd"))
+        #expect(!(network(-1009)?.needsSettings ?? true))
+    }
+
     @Test func errorBodiesOfEveryShape() {
         #expect(AIFailure.serverMessage(in: Data(#"[{"error":{"code":400,"message":"API key not valid.","status":"INVALID_ARGUMENT"}}]"#.utf8)) == "API key not valid.")
         #expect(AIFailure.serverMessage(in: Data(#"{"error":"model not found"}"#.utf8)) == "model not found")
@@ -245,6 +261,29 @@ import Testing
         #expect(AIProviderPreset.named("unknown") == .deepSeek)
         #expect(Set(AIProviderPreset.all.map(\.id)).count == AIProviderPreset.all.count)
         #expect(AIProviderPreset.custom.keyOptional)
+        #expect(AIProviderPreset.ollama.keyOptional)
+        #expect(!AIProviderPreset.deepSeek.keyOptional)
+    }
+
+    @Test func headersCarryTheKey() {
+        let deepSeek = AIProviderPreset.deepSeek.requestHeaders(key: " sk-test \n")
+        #expect(deepSeek == ["Content-Type": "application/json", "Authorization": "Bearer sk-test"])
+        let anthropic = AIProviderPreset.anthropic.requestHeaders(key: "k")
+        #expect(anthropic["x-api-key"] == "k")
+        #expect(anthropic["Authorization"] == "Bearer k")
+        #expect(anthropic["anthropic-version"] != nil)
+        #expect(AIProviderPreset.ollama.requestHeaders(key: nil) == ["Content-Type": "application/json"])
+        #expect(AIProviderPreset.openRouter.requestHeaders(key: "")["X-Title"] == "DigUp")
+    }
+
+    @Test func theOtherModel() {
+        let deepSeek = AIProviderPreset.deepSeek
+        #expect(deepSeek.otherModel(than: "deepseek-flash") == "deepseek-v4-pro")
+        #expect(deepSeek.otherModel(than: "deepseek-v4-pro") == "deepseek-flash")
+        #expect(deepSeek.otherModel(than: "something-else") == "deepseek-flash")
+        #expect(AIProviderPreset.custom.otherModel(than: "a", available: ["a", "b"]) == "b")
+        #expect(AIProviderPreset.custom.otherModel(than: "a", available: ["a"]) == nil)
+        #expect(AIProviderPreset.openRouter.otherModel(than: "openrouter/auto", available: ["x/y"]) == "x/y")
     }
 }
 
@@ -340,5 +379,37 @@ import Testing
         #expect(AIMarkdownLine.classify("| Name | Size |") == .tableRow(["Name", "Size"]))
         #expect(AIMarkdownLine.classify("|:---|---:|") == .tableSeparator)
         #expect(AIMarkdownLine.classify("| a | | c |") == .tableRow(["a", "", "c"]))
+    }
+}
+
+@Suite struct LauncherAIDiffTests {
+    @Test func wordsSpacesAndPunctuationAreTokens() {
+        #expect(AIWordDiff.tokens("Don't stop,  now!") == ["Don't", " ", "stop", ",", "  ", "now", "!"])
+        #expect(AIWordDiff.tokens("") == [])
+    }
+
+    @Test func fixesShowAsRemovedThenAdded() throws {
+        let runs = try #require(AIWordDiff.runs(from: "I has teh cat.", to: "I have the cat."))
+        #expect(runs == [
+            .init(.same, "I "), .init(.removed, "has"), .init(.added, "have"), .init(.same, " "),
+            .init(.removed, "teh"), .init(.added, "the"), .init(.same, " cat."),
+        ])
+        #expect(AIWordDiff.changed(runs))
+    }
+
+    @Test func unchangedTextIsOneRun() throws {
+        let runs = try #require(AIWordDiff.runs(from: "Same text.", to: "Same text."))
+        #expect(runs == [.init(.same, "Same text.")])
+        #expect(!AIWordDiff.changed(runs))
+    }
+
+    @Test func removedPhrasesStayTogether() throws {
+        let runs = try #require(AIWordDiff.runs(from: "a very very long b", to: "a b"))
+        #expect(runs == [.init(.same, "a "), .init(.removed, "very very long "), .init(.same, "b")])
+    }
+
+    @Test func hugeTextsAreSkipped() {
+        let long = Array(repeating: "word", count: AIWordDiff.tokenLimit).joined(separator: " ")
+        #expect(AIWordDiff.runs(from: long, to: "short") == nil)
     }
 }

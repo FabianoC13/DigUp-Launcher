@@ -20,31 +20,79 @@ public struct AIProviderPreset: Identifiable, Equatable, Sendable {
     public let headers: [String: String]
     /// Requests go out without a key when none is saved (a local server such as Ollama or LM Studio).
     public let keyOptional: Bool
+    /// A header that carries the key as well as `Authorization: Bearer` (Anthropic's `x-api-key`).
+    public let keyHeader: String?
+
+    public init(id: String, name: String, baseURL: String, models: [String], alternateModel: String?, keyPage: String?,
+                thinkingSwitch: Bool = false, headers: [String: String] = [:], keyOptional: Bool = false,
+                keyHeader: String? = nil) {
+        self.id = id
+        self.name = name
+        self.baseURL = baseURL
+        self.models = models
+        self.alternateModel = alternateModel
+        self.keyPage = keyPage
+        self.thinkingSwitch = thinkingSwitch
+        self.headers = headers
+        self.keyOptional = keyOptional
+        self.keyHeader = keyHeader
+    }
 
     public var defaultModel: String { models.first ?? "" }
+
+    /// The headers of every request: JSON, the preset's own, and the key (when there is one).
+    public func requestHeaders(key: String?) -> [String: String] {
+        var all = headers
+        all["Content-Type"] = "application/json"
+        if let key = key?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
+            all["Authorization"] = "Bearer \(key)"
+            if let keyHeader { all[keyHeader] = key }
+        }
+        return all
+    }
+
+    /// The model to try when you ask for "the other model" (⇧⌘R): the preset's alternate when `current` is its
+    /// default, otherwise the default, otherwise the first other model `available`. nil when there's no other.
+    public func otherModel(than current: String, available: [String] = []) -> String? {
+        if current == defaultModel, let alternateModel, alternateModel != current { return alternateModel }
+        if !defaultModel.isEmpty, defaultModel != current { return defaultModel }
+        return (models + available).first { $0 != current }
+    }
 
     public static let deepSeek = AIProviderPreset(
         id: "deepseek", name: "DeepSeek", baseURL: "https://api.deepseek.com",
         models: ["deepseek-flash", "deepseek-v4-pro"], alternateModel: "deepseek-v4-pro",
-        keyPage: "https://platform.deepseek.com/api_keys", thinkingSwitch: true, headers: [:], keyOptional: false)
+        keyPage: "https://platform.deepseek.com/api_keys", thinkingSwitch: true)
     public static let openAI = AIProviderPreset(
         id: "openai", name: "OpenAI", baseURL: "https://api.openai.com/v1",
         models: ["gpt-5-mini", "gpt-5"], alternateModel: "gpt-5",
-        keyPage: "https://platform.openai.com/api-keys", thinkingSwitch: false, headers: [:], keyOptional: false)
+        keyPage: "https://platform.openai.com/api-keys")
+    /// Anthropic's OpenAI-compatible endpoint: Bearer for chats, `x-api-key` and a version for the model list.
+    public static let anthropic = AIProviderPreset(
+        id: "anthropic", name: "Anthropic", baseURL: "https://api.anthropic.com/v1",
+        models: ["claude-haiku-4-5", "claude-sonnet-4-5"], alternateModel: "claude-sonnet-4-5",
+        keyPage: "https://console.anthropic.com/settings/keys", headers: ["anthropic-version": "2023-06-01"],
+        keyHeader: "x-api-key")
     public static let openRouter = AIProviderPreset(
         id: "openrouter", name: "OpenRouter", baseURL: "https://openrouter.ai/api/v1",
         models: ["openrouter/auto"], alternateModel: nil,
-        keyPage: "https://openrouter.ai/keys", thinkingSwitch: false,
-        headers: ["HTTP-Referer": "https://github.com/ARahim3/DigUp", "X-Title": "DigUp"], keyOptional: false)
+        keyPage: "https://openrouter.ai/keys",
+        headers: ["HTTP-Referer": "https://github.com/ARahim3/DigUp", "X-Title": "DigUp"])
     public static let gemini = AIProviderPreset(
         id: "gemini", name: "Google Gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
         models: ["gemini-flash-latest", "gemini-pro-latest"], alternateModel: "gemini-pro-latest",
-        keyPage: "https://aistudio.google.com/apikey", thinkingSwitch: false, headers: [:], keyOptional: false)
+        keyPage: "https://aistudio.google.com/apikey")
+    /// Models running on this Mac (`ollama serve`); its models come from the server's list.
+    public static let ollama = AIProviderPreset(
+        id: "ollama", name: "Ollama (on this Mac)", baseURL: "http://localhost:11434/v1", models: [],
+        alternateModel: nil, keyPage: nil, keyOptional: true)
     public static let custom = AIProviderPreset(
-        id: "custom", name: "Custom", baseURL: "", models: [], alternateModel: nil, keyPage: nil,
-        thinkingSwitch: false, headers: [:], keyOptional: true)
+        id: "custom", name: "Custom (OpenAI-compatible)", baseURL: "", models: [], alternateModel: nil, keyPage: nil,
+        keyOptional: true)
 
-    public static let all: [AIProviderPreset] = [.deepSeek, .openAI, .openRouter, .gemini, .custom]
+    public static let all: [AIProviderPreset] = [
+        .deepSeek, .openAI, .anthropic, .openRouter, .gemini, .ollama, .custom,
+    ]
 
     /// The preset with this id; DeepSeek for an unknown one.
     public static func named(_ id: String?) -> AIProviderPreset {

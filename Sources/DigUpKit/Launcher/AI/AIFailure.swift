@@ -116,6 +116,28 @@ public enum AIFailure: Error, Equatable, Sendable {
         }
     }
 
+    /// The failure a networking error stands for, from its `URLError` code (-1009 offline, -1001 timed out…); nil for
+    /// -999, a cancelled request, which is no failure. `host` is the server's name, `seconds` the timeout.
+    public static func from(networkCode code: Int, host: String?, provider: String, seconds: Int,
+                            description: String) -> AIFailure? {
+        switch code {
+        case -999:
+            return nil
+        case -1009, -1020, -1018:   // not connected, data not allowed, roaming off
+            return .offline
+        case -1001:
+            return .timedOut(provider: provider, seconds: seconds)
+        case -1003, -1004, -1006:   // can't find the host, can't connect, DNS failed
+            return .unreachable(host: host ?? provider)
+        case -1005:
+            return .network("the connection was lost. Try again.")
+        case -1206 ... -1200:   // TLS: failed, untrusted or expired certificate…
+            return .network("a secure connection to \(host ?? provider) couldn't be made.")
+        default:
+            return .network(description)
+        }
+    }
+
     /// The human part of an error body: `{"error": {"message": …}}` (OpenAI, DeepSeek, OpenRouter), `{"error": "…"}`,
     /// `[{"error": {…}}]` (Gemini), `{"message": …}` or `{"detail": …}`. Trimmed, without DeepSeek's
     /// "(request_id: …)", at most 300 characters; nil when there's none.
