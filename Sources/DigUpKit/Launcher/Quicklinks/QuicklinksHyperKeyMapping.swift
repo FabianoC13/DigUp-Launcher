@@ -73,3 +73,57 @@ public enum QuicklinksHyperKeyMapping {
         return "{\"UserKeyMapping\":[\(entries.joined(separator: ","))]}"
     }
 }
+
+/// What the Hyper Key's event tap does with each key press: F18 (Caps Lock, remapped) is swallowed and only marks
+/// the Hyper Key held; while it's held, every other key gets ⌃⌥⌘ (⇧) added. Letting it go soon after pressing it, with
+/// no other key between, is a quick press.
+public struct QuicklinksHyperKeyState: Equatable, Sendable {
+    public enum Decision: Equatable, Sendable {
+        /// Not the tap's business.
+        case pass
+        /// The Hyper Key itself: nobody else sees it.
+        case swallow
+        /// A key pressed with the Hyper Key held: add the modifiers.
+        case addModifiers
+        /// The Hyper Key went up after a short press on its own (swallowed too).
+        case quickPress
+    }
+
+    /// kVK_F18.
+    public static let f18KeyCode: Int64 = 79
+    /// A press held longer than this isn't a quick press, even with no other key.
+    public static let quickPressLimit: TimeInterval = 0.4
+
+    public private(set) var isHeld = false
+    private var pressedAt: TimeInterval = 0
+    private var usedWhileHeld = false
+
+    public init() {}
+
+    /// One key down or up, at a time in seconds (the event's timestamp).
+    public mutating func handle(keyCode: Int64, isDown: Bool, at time: TimeInterval) -> Decision {
+        if keyCode == Self.f18KeyCode {
+            if isDown {
+                // Key repeat sends more downs while it's held.
+                if !isHeld {
+                    isHeld = true
+                    usedWhileHeld = false
+                    pressedAt = time
+                }
+                return .swallow
+            }
+            let quick = isHeld && !usedWhileHeld && time - pressedAt <= Self.quickPressLimit
+            isHeld = false
+            return quick ? .quickPress : .swallow
+        }
+        guard isHeld else { return .pass }
+        usedWhileHeld = true
+        return .addModifiers
+    }
+
+    /// The tap was switched off for a moment (macOS does that when a tap is slow): a release may have been missed.
+    public mutating func reset() {
+        isHeld = false
+        usedWhileHeld = false
+    }
+}

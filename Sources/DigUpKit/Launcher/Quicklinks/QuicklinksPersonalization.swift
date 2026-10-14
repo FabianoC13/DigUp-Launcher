@@ -101,6 +101,29 @@ public enum QuicklinksFallbacks {
         return result
     }
 
+    /// A built-in's name in Settings ("Search Google").
+    public static func title(of id: String) -> String? {
+        switch id {
+        case "google": "Search Google"
+        case "ai": "Ask AI"
+        case "duckduckgo": "Search DuckDuckGo"
+        case "maps": "Search Maps"
+        case "files": "Search Files"
+        default: nil
+        }
+    }
+
+    /// Where a built-in web fallback goes with `query` (nil for the others: Ask AI, Search Files).
+    public static func searchURL(_ id: String, query: String) -> URL? {
+        let text = QuicklinkTemplate.percentEncode(query)
+        switch id {
+        case "google": return URL(string: "https://www.google.com/search?q=\(text)")
+        case "duckduckgo": return URL(string: "https://duckduckgo.com/?q=\(text)")
+        case "maps": return URL(string: "maps://?q=\(text)")
+        default: return nil
+        }
+    }
+
     /// Moves the entry at `index` up (negative) or down (positive), within the list.
     public static func move(_ entries: inout [QuicklinksFallbackEntry], at index: Int, by offset: Int) {
         guard entries.indices.contains(index) else { return }
@@ -108,5 +131,42 @@ public enum QuicklinksFallbacks {
         guard target != index else { return }
         let entry = entries.remove(at: index)
         entries.insert(entry, at: target)
+    }
+}
+
+/// The Quicklinks feature's own settings, saved next to the quicklinks: the fallback commands, the Hyper Key, and the
+/// items that may run from a `digup://run` link without asking.
+public struct QuicklinksSettings: Codable, Equatable, Sendable {
+    /// What Caps Lock does when pressed and let go alone while it's the Hyper Key.
+    public enum QuickPress: String, Codable, CaseIterable, Sendable {
+        case nothing, escape
+    }
+
+    /// Order and switches; `QuicklinksFallbacks.normalized` brings it up to date.
+    public var fallbacks: [QuicklinksFallbackEntry] = []
+    /// Caps Lock acts as ⌃⌥⌘ (and ⇧ with `hyperIncludesShift`).
+    public var hyperKeyEnabled = false
+    public var hyperIncludesShift = true
+    public var hyperQuickPress = QuickPress.nothing
+    /// The HID usage Caps Lock was mapped to before the Hyper Key took it over, to put back when it's turned off.
+    public var previousCapsLock: UInt64?
+    /// Item ids a `digup://run` link may run without asking first.
+    public var trustedDeeplinks: [String] = []
+
+    public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case fallbacks, hyperKeyEnabled, hyperIncludesShift, hyperQuickPress, previousCapsLock, trustedDeeplinks
+    }
+
+    /// Older files may lack newer keys, and an unknown quick press reads as none.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fallbacks = try container.decodeIfPresent([QuicklinksFallbackEntry].self, forKey: .fallbacks) ?? []
+        hyperKeyEnabled = try container.decodeIfPresent(Bool.self, forKey: .hyperKeyEnabled) ?? false
+        hyperIncludesShift = try container.decodeIfPresent(Bool.self, forKey: .hyperIncludesShift) ?? true
+        hyperQuickPress = (try? container.decodeIfPresent(QuickPress.self, forKey: .hyperQuickPress)) ?? .nothing
+        previousCapsLock = try container.decodeIfPresent(UInt64.self, forKey: .previousCapsLock)
+        trustedDeeplinks = try container.decodeIfPresent([String].self, forKey: .trustedDeeplinks) ?? []
     }
 }

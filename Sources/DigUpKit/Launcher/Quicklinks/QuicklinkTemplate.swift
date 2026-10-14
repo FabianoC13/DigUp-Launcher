@@ -381,6 +381,19 @@ public struct QuicklinkTemplate: Equatable, Sendable {
         return text.addingPercentEncoding(withAllowedCharacters: allowed).flatMap { URL(string: $0) }
     }
 
+    /// What an argument's empty field says: "Search Google…" for Google Search's query, "To (en)…" for a named
+    /// argument with a default.
+    public static func prompt(for argument: Argument, quicklinkName name: String) -> String {
+        if let label = argument.label, !label.isEmpty {
+            var text = label.prefix(1).uppercased() + label.dropFirst()
+            if let value = argument.defaultValue, !value.isEmpty { text += " (\(value))" }
+            return text + "…"
+        }
+        let words = name.split(separator: " ").filter { $0.lowercased() != "search" }
+        let subject = words.isEmpty ? name : words.joined(separator: " ")
+        return "Search \(subject)…"
+    }
+
     /// The link without "https://" and "www.", for a subtitle.
     public static func display(_ link: String) -> String {
         var text = link.trimmingCharacters(in: .whitespaces)

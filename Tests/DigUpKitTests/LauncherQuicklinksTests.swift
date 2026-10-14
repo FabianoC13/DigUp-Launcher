@@ -94,6 +94,15 @@ import Testing
         #expect(QuicklinkTemplate.destination("   ", home: "/") == nil)
     }
 
+    @Test func argumentPrompts() {
+        let query = QuicklinkTemplate("https://g.com/?q={query}").arguments[0]
+        #expect(QuicklinkTemplate.prompt(for: query, quicklinkName: "Google Search") == "Search Google…")
+        #expect(QuicklinkTemplate.prompt(for: query, quicklinkName: "YouTube") == "Search YouTube…")
+        #expect(QuicklinkTemplate.prompt(for: query, quicklinkName: "Search") == "Search Search…")
+        let named = QuicklinkTemplate(#"https://t.com/?tl={argument name="to" default="en"}"#).arguments[0]
+        #expect(QuicklinkTemplate.prompt(for: named, quicklinkName: "Translate") == "To (en)…")
+    }
+
     @Test func displayAndHost() {
         #expect(QuicklinkTemplate.display("https://www.google.com/search?q={query}") == "google.com/search?q={query}")
         #expect(QuicklinkTemplate.webHost("https://www.google.com/maps/search/{query}") == "www.google.com")
@@ -146,10 +155,59 @@ import Testing
         #expect(QuicklinkMatcher.match("xyz", name: "Google Search", keyword: nil, takesArgument: true) == nil)
     }
 
+    @Test func partOfAWordRanksLower() throws {
+        let partial = try #require(QuicklinkMatcher.match("goo cats", name: "Google Search", keyword: nil,
+                                                          takesArgument: true))
+        #expect(partial.argument == "cats")
+        #expect(partial.score < 0.75)
+        let whole = try #require(QuicklinkMatcher.match("google cats", name: "Google Search", keyword: nil,
+                                                        takesArgument: true))
+        #expect(whole.score > partial.score)
+    }
+
+    @Test func laterWordsOfTheName() throws {
+        let maps = try #require(QuicklinkMatcher.match("maps coffee near me", name: "Google Maps", keyword: nil,
+                                                       takesArgument: true))
+        #expect(maps.argument == "coffee near me")
+        #expect(maps.score >= 0.8 && maps.score < 0.9)
+        let translate = try #require(QuicklinkMatcher.match("trans hello", name: "Google Translate", keyword: nil,
+                                                            takesArgument: true))
+        #expect(translate.argument == "hello")
+        // Two letters of a later word is too little.
+        #expect(QuicklinkMatcher.match("tr hello", name: "Google Translate", keyword: nil, takesArgument: true) == nil)
+    }
+
+    @Test func aliasThenArgument() {
+        #expect(QuicklinkMatcher.argument(after: "ss", in: "SS  Lo-Fi beats") == "Lo-Fi beats")
+        #expect(QuicklinkMatcher.argument(after: "my docs", in: "my  docs swift") == "swift")
+        #expect(QuicklinkMatcher.argument(after: "ss", in: "ssx cats") == nil)
+        #expect(QuicklinkMatcher.argument(after: "ss", in: "ss") == nil)
+        #expect(QuicklinkMatcher.argument(after: "", in: "ss cats") == nil)
+    }
+
     @Test func splits() {
         let parts = QuicklinkMatcher.splits("a b  c").map { "\($0.head)|\($0.tail)" }
         #expect(parts == ["a|b  c", "a b|c"])
         #expect(QuicklinkMatcher.splits("single").isEmpty)
+    }
+
+    @Test func libraryLinksAllOpen() {
+        #expect(Set(QuicklinkRecord.library.map(\.id)).count == QuicklinkRecord.library.count)
+        for record in QuicklinkRecord.library {
+            let filled = QuicklinkTemplate(record.link).filled(.init(arguments: ["query": "x", "to": "fr"]))
+            #expect(QuicklinkTemplate.destination(filled, home: "/Users/me") != nil, "\(record.name)")
+        }
+    }
+
+    @Test func keywordsAndNames() {
+        let links = [QuicklinkRecord(id: "1", name: "Google Search", link: "https://g.com/{query}", keyword: "g")]
+        #expect(QuicklinkRecord.keywordProblem("G", for: "2", among: links) == "“Google Search” has that keyword")
+        #expect(QuicklinkRecord.keywordProblem("g", for: "1", among: links) == nil)
+        #expect(QuicklinkRecord.keywordProblem("two words", for: "2", among: links) == "A keyword is one word")
+        #expect(QuicklinkRecord.keywordProblem("  ", for: "2", among: links) == nil)
+        #expect(QuicklinkRecord.suggestedName(for: "https://www.github.com/apple") == "github.com")
+        #expect(QuicklinkRecord.suggestedName(for: "~/Documents/Taxes") == "Taxes")
+        #expect(QuicklinkRecord.suggestedName(for: "not a link") == "")
     }
 
     @Test func defaultsDecodeAndRoundTrip() throws {
@@ -247,6 +305,34 @@ import Testing
             == [.init(source: Mapping.capsLock, destination: 0x7_0000_0029)])
     }
 
+    @Test func tapAddsModifiersWhileHeld() {
+        var state = QuicklinksHyperKeyState()
+        let f18 = QuicklinksHyperKeyState.f18KeyCode
+        #expect(state.handle(keyCode: 0, isDown: true, at: 0) == .pass)
+        #expect(state.handle(keyCode: f18, isDown: true, at: 1) == .swallow)
+        #expect(state.isHeld)
+        #expect(state.handle(keyCode: f18, isDown: true, at: 1.3) == .swallow)   // key repeat
+        #expect(state.handle(keyCode: 1, isDown: true, at: 1.5) == .addModifiers)
+        #expect(state.handle(keyCode: 1, isDown: false, at: 1.6) == .addModifiers)
+        #expect(state.handle(keyCode: f18, isDown: false, at: 1.7) == .swallow)   // used: not a quick press
+        #expect(!state.isHeld)
+        #expect(state.handle(keyCode: 1, isDown: true, at: 2) == .pass)
+    }
+
+    @Test func quickPress() {
+        var state = QuicklinksHyperKeyState()
+        let f18 = QuicklinksHyperKeyState.f18KeyCode
+        #expect(state.handle(keyCode: f18, isDown: true, at: 10) == .swallow)
+        #expect(state.handle(keyCode: f18, isDown: false, at: 10.2) == .quickPress)
+        // Held too long.
+        #expect(state.handle(keyCode: f18, isDown: true, at: 20) == .swallow)
+        #expect(state.handle(keyCode: f18, isDown: false, at: 21) == .swallow)
+        // A release without a press (after a reset) isn't one either.
+        #expect(state.handle(keyCode: f18, isDown: true, at: 30) == .swallow)
+        state.reset()
+        #expect(state.handle(keyCode: f18, isDown: false, at: 30.1) == .swallow)
+    }
+
     @Test func json() {
         #expect(Mapping.json([Mapping.hyper])
             == #"{"UserKeyMapping":[{"HIDKeyboardModifierMappingSrc":30064771129,"HIDKeyboardModifierMappingDst":30064771181}]}"#)
@@ -293,6 +379,29 @@ import Testing
         #expect(usage.hotkeys == ["b": "cmd+opt+s"])
         QuicklinksPersonalization.setHotkey(nil, for: "b", in: &usage)
         #expect(usage.hotkeys.isEmpty)
+    }
+
+    @Test func fallbackSearchURLs() {
+        #expect(QuicklinksFallbacks.searchURL("google", query: "a&b c")?.absoluteString
+            == "https://www.google.com/search?q=a%26b%20c")
+        #expect(QuicklinksFallbacks.searchURL("duckduckgo", query: "x")?.absoluteString == "https://duckduckgo.com/?q=x")
+        #expect(QuicklinksFallbacks.searchURL("maps", query: "café")?.absoluteString == "maps://?q=caf%C3%A9")
+        #expect(QuicklinksFallbacks.searchURL("ai", query: "x") == nil)
+        #expect(QuicklinksFallbacks.builtIns.allSatisfy { QuicklinksFallbacks.title(of: $0) != nil })
+    }
+
+    @Test func settingsReadOlderFiles() throws {
+        let empty = try JSONDecoder().decode(QuicklinksSettings.self, from: Data("{}".utf8))
+        #expect(empty == QuicklinksSettings())
+        #expect(!empty.hyperKeyEnabled && empty.hyperIncludesShift && empty.hyperQuickPress == .nothing)
+        let odd = try JSONDecoder().decode(QuicklinksSettings.self,
+                                           from: Data(#"{"hyperQuickPress":"capslock","hyperKeyEnabled":true}"#.utf8))
+        #expect(odd.hyperQuickPress == .nothing && odd.hyperKeyEnabled)
+        var settings = QuicklinksSettings()
+        settings.previousCapsLock = QuicklinksHyperKeyMapping.capsLock
+        settings.trustedDeeplinks = ["app:x"]
+        settings.fallbacks = [QuicklinksFallbackEntry(id: "ai", enabled: false)]
+        #expect(try JSONDecoder().decode(QuicklinksSettings.self, from: JSONEncoder().encode(settings)) == settings)
     }
 
     @Test func fallbacksNormalize() {
