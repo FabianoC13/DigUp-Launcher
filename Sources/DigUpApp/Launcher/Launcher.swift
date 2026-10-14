@@ -84,6 +84,8 @@ final class Launcher {
     var onPersonalizationChanged: [() -> Void] = []
 
     static let resultsLimit = 40
+    /// How long the first results of a keystroke wait for slower providers.
+    static let firstUpdateWait: Duration = .milliseconds(40)
     static let suggestionsLimit = 8
 
     init() {
@@ -111,30 +113,51 @@ final class Launcher {
             return [Task { update(await suggestions()) }]
         }
         let parts = Parts()
+        let alias = usage.item(forAlias: query.text)
+        parts.waiting = providers.count + (alias == nil ? 0 : 1)
+        // The first update waits for every provider or `firstUpdateWait`, whichever comes first, so the list doesn't
+        // flash with only the quickest provider's rows; after that, each answer shows as it comes.
+        func publish(force: Bool = false) {
+            guard force || parts.waiting == 0 || parts.deadlinePassed else { return }
+            update(rank(parts.all, query: query))
+        }
         var tasks = providers.map { provider in
             Task {
                 let found = await provider.items(for: query)
                 guard !Task.isCancelled else { return }
                 parts.byProvider[provider.id] = found
-                update(rank(parts.all, query: query))
+                parts.waiting -= 1
+                publish()
             }
         }
         // An alias puts its item first, whatever its name.
-        if let id = usage.item(forAlias: query.text) {
+        if let alias {
             tasks.append(Task {
-                guard var item = await item(id: id), !Task.isCancelled else { return }
-                item.score = 3
-                item.section = .results
-                parts.byProvider["\u{0}alias"] = [item]
-                update(rank(parts.all, query: query))
+                let found = await item(id: alias)
+                guard !Task.isCancelled else { return }
+                if var item = found {
+                    item.score = 3
+                    item.section = .results
+                    parts.byProvider["\u{0}alias"] = [item]
+                }
+                parts.waiting -= 1
+                publish()
             })
         }
+        tasks.append(Task {
+            try? await Task.sleep(for: Self.firstUpdateWait)
+            guard !Task.isCancelled, parts.waiting > 0 else { return }
+            parts.deadlinePassed = true
+            publish(force: true)
+        })
         return tasks
     }
 
     /// The provider results of one search, as they come in.
     private final class Parts {
         var byProvider: [String: [LauncherItem]] = [:]
+        var waiting = 0
+        var deadlinePassed = false
         var all: [LauncherItem] { byProvider.keys.sorted().flatMap { byProvider[$0]! } }
     }
 
