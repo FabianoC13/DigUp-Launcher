@@ -75,7 +75,13 @@ final class Launcher {
     private(set) var providers: [any LauncherProvider] = []
     private(set) var usage: LauncherUsage
     /// Where the launcher's features keep their files (clipboard history, snippets, notes…).
-    static let directory = AppSettings.supportDirectory.appendingPathComponent("Launcher", isDirectory: true)
+    /// `-launcherDir <path>` points dev and test runs somewhere else, so they never touch the real history.
+    static let directory: URL = {
+        if let path = UserDefaults.standard.string(forKey: "launcherDir"), !path.isEmpty {
+            return URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
+        }
+        return AppSettings.supportDirectory.appendingPathComponent("Launcher", isDirectory: true)
+    }()
     private static var usageFile: URL { directory.appendingPathComponent("usage.json") }
     /// The panel's context, for running items outside a search (hotkeys, deeplinks).
     weak var panel: SearchPanelController?
