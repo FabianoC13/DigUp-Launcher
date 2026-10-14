@@ -52,7 +52,8 @@ public enum AIFailure: Error, Equatable, Sendable {
             }
             return "\(provider) is rate limiting requests. Try again in a moment."
         case .notFound(let provider, let model, let detail):
-            let base = "\(provider) doesn't know the model “\(model)”. Pick another one in Settings → Launcher → Quick AI."
+            let base = "\(provider) doesn't know the model “\(model)”. Pick another one in Settings → Launcher → "
+                + "Quick AI."
             return detail.map { "\(base) (\($0))" } ?? base
         case .badRequest(let provider, let detail):
             return "\(provider) didn't accept the request: \(detail)"
@@ -138,8 +139,8 @@ public enum AIFailure: Error, Equatable, Sendable {
         }
     }
 
-    /// The human part of an error body: `{"error": {"message": …}}` (OpenAI, DeepSeek, OpenRouter), `{"error": "…"}`,
-    /// `[{"error": {…}}]` (Gemini), `{"message": …}` or `{"detail": …}`. Trimmed, without DeepSeek's
+    /// The human part of an error body: `{"error": {"message": …}}` (OpenAI, DeepSeek, OpenRouter),
+    /// `{"error": "…"}`, `[{"error": {…}}]` (Gemini), `{"message": …}` or `{"detail": …}`. Trimmed, without DeepSeek's
     /// "(request_id: …)", at most 300 characters; nil when there's none.
     public static func serverMessage(in body: Data) -> String? {
         guard let object = errorObject(in: body) else {

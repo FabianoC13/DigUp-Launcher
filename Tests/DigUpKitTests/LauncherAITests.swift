@@ -380,6 +380,68 @@ import Testing
         #expect(AIMarkdownLine.classify("|:---|---:|") == .tableSeparator)
         #expect(AIMarkdownLine.classify("| a | | c |") == .tableRow(["a", "", "c"]))
     }
+
+    @Test func blocksOfAnAnswer() {
+        let answer = """
+            # Title
+            First line
+            second line.
+
+            - one
+              more of one
+            - [x] done
+            2. two
+
+            > quoted
+            > twice
+
+            | A | B |
+            |---|---|
+            | 1 | 2 |
+            ---
+            ```swift
+            let x = 1
+
+            print(x)
+            ```
+            After.
+            """
+        #expect(AIMarkdownBlock.parse(answer) == [
+            .heading(level: 1, text: "Title"),
+            .paragraph("First line\nsecond line."),
+            .listItem(indent: 0, marker: "•", text: "one\nmore of one"),
+            .listItem(indent: 0, marker: "☑", text: "done"),
+            .listItem(indent: 0, marker: "2.", text: "two"),
+            .quote("quoted\ntwice"),
+            .table(rows: [["A", "B"], ["1", "2"]], header: true),
+            .rule,
+            .code("let x = 1\n\nprint(x)", language: "swift"),
+            .paragraph("After."),
+        ])
+    }
+
+    @Test func anUnclosedFenceIsCodeToTheEnd() {
+        #expect(AIMarkdownBlock.parse("Here:\n~~~\nfunc a() {\n```") == [
+            .paragraph("Here:"), .code("func a() {\n```", language: ""),
+        ])
+        #expect(AIMarkdownBlock.code(in: "a\n```js\nx()\n```\nb\n```\ny\n```") == ["x()", "y"])
+        #expect(AIMarkdownBlock.parse("") == [])
+    }
+}
+
+@Suite struct LauncherAIRewriteTests {
+    @Test func rewritesLoseTheirWrapping() {
+        #expect(AICommand.cleanRewrite("  Fixed text.\n") == "Fixed text.")
+        #expect(AICommand.cleanRewrite("```\nline 1\nline 2\n```") == "line 1\nline 2")
+        #expect(AICommand.cleanRewrite("```markdown\n# Hi\n```") == "# Hi")
+        #expect(AICommand.cleanRewrite("\"\"\"\nHello\n\"\"\"") == "Hello")
+        #expect(AICommand.cleanRewrite("\u{201C}Hola\u{201D}") == "Hola")
+        #expect(AICommand.cleanRewrite("\"Hi\" she said, \"bye\"") == "\"Hi\" she said, \"bye\"")
+        // Code in the middle of a text stays as it is.
+        let mixed = "Run:\n```\nls\n```\nThen go."
+        #expect(AICommand.cleanRewrite(mixed) == mixed)
+        #expect(AICommand.cleanRewrite("```\na\n```\n\n```\nb\n```") == "```\na\n```\n\n```\nb\n```")
+    }
 }
 
 @Suite struct LauncherAIDiffTests {

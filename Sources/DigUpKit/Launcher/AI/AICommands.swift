@@ -97,7 +97,8 @@ public enum AICommand: String, CaseIterable, Sendable {
         switch self {
         case .fixSpelling:
             return "Fix the spelling, grammar and punctuation of the text. Change as little as possible: keep the "
-                + "wording, tone and style. If there's nothing to fix, return the text unchanged. \(sameLanguage) \(rewrite)"
+                + "wording, tone and style. If there's nothing to fix, return the text unchanged. "
+                + "\(sameLanguage) \(rewrite)"
         case .improveWriting:
             return "Improve the writing of the text: make it clearer and let it flow better, with better word choice, "
                 + "keeping its meaning, tone and roughly its length. \(sameLanguage) \(rewrite)"
@@ -122,8 +123,8 @@ public enum AICommand: String, CaseIterable, Sendable {
             return "Explain the text in simple terms, as to a smart person who is new to the topic: what it means, any "
                 + "jargon, and why it matters. Be concise, use Markdown, and write in the text's language."
         case .findBugs:
-            return "Review the code for bugs: logic errors, unhandled edge cases, crashes, races and security problems. "
-                + "For each, say where it is, why it's wrong and how to fix it (with a short code snippet when it "
+            return "Review the code for bugs: logic errors, unhandled edge cases, crashes, races and security "
+                + "problems. For each, say where it is, why it's wrong and how to fix it (with a short code snippet when it "
                 + "helps). If you find none, say so. Use Markdown."
         }
     }
@@ -132,5 +133,28 @@ public enum AICommand: String, CaseIterable, Sendable {
     public func message(for text: String) -> String {
         let what = self == .findBugs ? "Code" : "Text"
         return "\(what):\n\"\"\"\n\(text)\n\"\"\""
+    }
+}
+
+extension AICommand {
+    /// A rewrite as it's pasted: without the whitespace around it, and without the one code fence or the quotes a
+    /// model sometimes wraps the whole text in despite being told not to.
+    public static func cleanRewrite(_ answer: String) -> String {
+        var text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = text.components(separatedBy: "\n")
+        if lines.count >= 2, lines[0].hasPrefix("```"),
+           lines[lines.count - 1].trimmingCharacters(in: .whitespaces) == "```",
+           !lines.dropFirst().dropLast().contains(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("```") }) {
+            text = lines.dropFirst().dropLast().joined(separator: "\n")
+        }
+        for quote in ["\"\"\"", "\u{201C}", "\""] {
+            let close = quote == "\u{201C}" ? "\u{201D}" : quote
+            if text.count > quote.count + close.count, text.hasPrefix(quote), text.hasSuffix(close),
+               !text.dropFirst(quote.count).dropLast(close.count).contains(close) {
+                text = String(text.dropFirst(quote.count).dropLast(close.count))
+                break
+            }
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
