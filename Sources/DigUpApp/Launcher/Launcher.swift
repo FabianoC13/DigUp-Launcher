@@ -106,11 +106,15 @@ final class Launcher {
 
     // MARK: Searching
 
-    /// Searches every provider; `update` gets the ranked list each time one more provider has answered. Cancel the
-    /// returned tasks when the query changes.
-    func search(_ query: LauncherQuery, update: @escaping ([LauncherItem]) -> Void) -> [Task<Void, Never>] {
+    /// Searches every provider; `update` gets the ranked list each time one more provider has answered, and whether
+    /// that was the last one. Cancel the returned tasks when the query changes.
+    func search(_ query: LauncherQuery, update: @escaping ([LauncherItem], _ final: Bool) -> Void) -> [Task<Void, Never>] {
         if query.isEmpty {
-            return [Task { update(await suggestions()) }]
+            return [Task {
+                let found = await suggestions()
+                guard !Task.isCancelled else { return }
+                update(found, true)
+            }]
         }
         let parts = Parts()
         let alias = usage.item(forAlias: query.text)
@@ -119,7 +123,7 @@ final class Launcher {
         // flash with only the quickest provider's rows; after that, each answer shows as it comes.
         func publish(force: Bool = false) {
             guard force || parts.waiting == 0 || parts.deadlinePassed else { return }
-            update(rank(parts.all, query: query))
+            update(rank(parts.all, query: query), parts.waiting == 0)
         }
         var tasks = providers.map { provider in
             Task {

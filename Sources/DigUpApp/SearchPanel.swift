@@ -318,9 +318,11 @@ final class SearchPanelController {
     /// The root search's providers, for what's typed; their items show as each one answers.
     private func runLauncher(_ text: String, generation current: Int) {
         stopLauncher()
-        launcherTasks = launcher.search(LauncherQuery(text)) { [weak self] found in
+        launcherTasks = launcher.search(LauncherQuery(text)) { [weak self] found, final in
             guard let self, current == generation, mode == nil else { return }
             showItems(found)
+            // Nothing else is coming when files aren't searched (debug hooks wait for this).
+            if final, phase == .launcher || phase == .empty { onFinalResults?() }
         }
     }
 
@@ -331,6 +333,7 @@ final class SearchPanelController {
             let found = await mode.items(for: LauncherQuery(text))
             guard let self, !Task.isCancelled, current == generation, self.mode === mode else { return }
             showItems(found)
+            onFinalResults?()
         }]
     }
 
