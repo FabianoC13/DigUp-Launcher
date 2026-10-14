@@ -316,3 +316,119 @@ import Testing
                 == "Title\n\nSome bold and code with a link.\n☐ task\n☑ done\n• item\nlet a = b * c")
     }
 }
+
+@Suite struct LauncherProductivityFocusTimerTests {
+    let start = Date(timeIntervalSince1970: 1_791_968_400)
+
+    @Test func pausesDontCount() {
+        var timer = FocusTimer(started: start, duration: 25 * 60)
+        #expect(timer.remaining(at: start.addingTimeInterval(600)) == 900)
+        timer.pause(at: start.addingTimeInterval(600))
+        #expect(timer.isPaused)
+        // Paused for five minutes: no time passes.
+        #expect(timer.remaining(at: start.addingTimeInterval(900)) == 900)
+        timer.resume(at: start.addingTimeInterval(900))
+        #expect(!timer.isPaused)
+        #expect(timer.elapsed(at: start.addingTimeInterval(1200)) == 900)
+        #expect(!timer.isFinished(at: start.addingTimeInterval(1799)))
+        #expect(timer.isFinished(at: start.addingTimeInterval(1800)))
+        #expect(timer.remaining(at: start.addingTimeInterval(4000)) == 0)
+    }
+
+    @Test func pausingTwiceKeepsTheFirstPause() {
+        var timer = FocusTimer(started: start, duration: 600)
+        timer.pause(at: start.addingTimeInterval(60))
+        timer.pause(at: start.addingTimeInterval(120))
+        timer.resume(at: start.addingTimeInterval(180))
+        timer.resume(at: start.addingTimeInterval(240))
+        #expect(timer.pausedBefore == 120)
+    }
+
+    @Test func openEndedSessionsNeverFinish() {
+        var timer = FocusTimer(started: start, duration: nil)
+        #expect(timer.remaining(at: start.addingTimeInterval(86_400)) == nil)
+        #expect(!timer.isFinished(at: start.addingTimeInterval(86_400)))
+        timer.extend(by: 600)
+        #expect(timer.duration == nil)
+        var timed = FocusTimer(started: start, duration: 600)
+        timed.extend(by: 600)
+        #expect(timed.duration == 1200)
+    }
+
+    @Test func blockPageAddressesAndRestoring() throws {
+        let page = URL(fileURLWithPath: "/Users/me/Library/Application Support/DigUp/Launcher/Focus/"
+                       + FocusBrowser.blockPageName)
+        let address = FocusBrowser.blockPageAddress(page: page, token: "ab12", host: "www.youtube.com")
+        #expect(address.hasPrefix("file:///Users/me/Library/Application%20Support/"))
+        #expect(address.hasSuffix(FocusBrowser.blockPageName + "#t=ab12&h=www.youtube.com"))
+        let script = FocusBrowser.restoreScript(bundleID: "com.apple.Safari")
+        #expect(script.contains("tell application id \"com.apple.Safari\""))
+        #expect(script.contains(FocusBrowser.blockPageName + "#t="))
+        // A tab is found by "#t=<token>&", as the address writes it.
+        #expect(address.contains("#t=" + "ab12" + "&"))
+    }
+}
+
+@Suite struct LauncherProductivityScheduleTextTests {
+    var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+    let locale = Locale(identifier: "en_US")
+    /// Wednesday, October 14, 2026, 09:00 UTC.
+    let now = Date(timeIntervalSince1970: 1_791_968_400)
+
+    /// Formatters put thin and narrow spaces around dashes and before AM/PM.
+    func plain(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{2009}", with: " ").replacingOccurrences(of: "\u{202F}", with: " ")
+    }
+
+    @Test func timeRanges() {
+        let range = plain(ScheduleText.timeRange(start: now, end: now.addingTimeInterval(1800), allDay: false,
+                                                 calendar: calendar, locale: locale))
+        #expect(range.contains("9:00") && range.contains("9:30"))
+        let day = calendar.startOfDay(for: now)
+        #expect(ScheduleText.timeRange(start: day, end: day.addingTimeInterval(86_400), allDay: true,
+                                       calendar: calendar, locale: locale) == "All day")
+        let twoDays = ScheduleText.timeRange(start: day, end: day.addingTimeInterval(2 * 86_400), allDay: true,
+                                             calendar: calendar, locale: locale)
+        #expect(twoDays.hasPrefix("All day, ") && twoDays.contains("14") && twoDays.contains("15"))
+        let overnight = plain(ScheduleText.timeRange(start: now.addingTimeInterval(13 * 3600),
+                                                     end: now.addingTimeInterval(17 * 3600), allDay: false,
+                                                     calendar: calendar, locale: locale))
+        #expect(overnight.contains("Oct 14") && overnight.contains("Oct 15"))
+    }
+
+    @Test func detailsToPaste() throws {
+        let link = try #require(URL(string: "https://meet.google.com/abc-defg-hij"))
+        let text = ScheduleText.details(title: "Standup", start: now, end: now.addingTimeInterval(900), allDay: false,
+                                        location: "Room 4", link: link, url: nil, attendees: ["Ana", "Bo"],
+                                        notes: "  Bring the numbers. ", calendar: calendar, locale: locale)
+        let lines = text.components(separatedBy: "\n")
+        #expect(lines.first == "Standup")
+        #expect(lines[1].hasPrefix("Wednesday, October 14, 2026"))
+        #expect(lines.contains("Location: Room 4"))
+        #expect(lines.contains("Join: https://meet.google.com/abc-defg-hij"))
+        #expect(lines.contains("Attendees: Ana, Bo"))
+        #expect(lines.last == "Bring the numbers.")
+        // A location that is just the call's link isn't said twice.
+        let linkOnly = ScheduleText.details(title: "Call", start: now, end: now, allDay: false,
+                                            location: link.absoluteString, link: link, url: link, attendees: [],
+                                            notes: nil, calendar: calendar, locale: locale)
+        #expect(linkOnly.components(separatedBy: "\n").count == 3)
+    }
+
+    @Test func availabilityByDay() {
+        let slots = [DateInterval(start: now, end: now.addingTimeInterval(3600)),
+                     DateInterval(start: now.addingTimeInterval(4 * 3600), end: now.addingTimeInterval(8 * 3600)),
+                     DateInterval(start: now.addingTimeInterval(24 * 3600), end: now.addingTimeInterval(25 * 3600))]
+        let lines = plain(ScheduleText.availability(slots, calendar: calendar, locale: locale))
+            .components(separatedBy: "\n")
+        #expect(lines.count == 2)
+        #expect(lines[0].hasPrefix("Wednesday, Oct 14: "))
+        #expect(lines[0].contains(", "))
+        #expect(lines[1].hasPrefix("Thursday, Oct 15: "))
+        #expect(ScheduleText.availability([], calendar: calendar, locale: locale) == "No free time")
+    }
+}

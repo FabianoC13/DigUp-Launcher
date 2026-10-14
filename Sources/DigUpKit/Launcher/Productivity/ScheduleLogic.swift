@@ -233,3 +233,78 @@ public enum ScheduleAvailability {
         return floored.addingTimeInterval(900)
     }
 }
+
+/// An event as text: its times in a row, the details to paste, your free time to share.
+public enum ScheduleText {
+    /// "10:00 – 10:30", "All day", or with dates when it spans days ("Oct 14, 22:00 – Oct 15, 01:00").
+    public static func timeRange(start: Date, end: Date, allDay: Bool, calendar: Calendar = .current,
+                                 locale: Locale = .current) -> String {
+        let lastDay = allDay ? end.addingTimeInterval(-1) : end
+        if allDay {
+            guard !calendar.isDate(start, inSameDayAs: lastDay), lastDay > start else { return "All day" }
+            return "All day, " + interval(start, lastDay, date: .medium, time: .none, calendar: calendar,
+                                          locale: locale)
+        }
+        if calendar.isDate(start, inSameDayAs: end) || end <= start {
+            return interval(start, end, date: .none, time: .short, calendar: calendar, locale: locale)
+        }
+        return interval(start, end, date: .medium, time: .short, calendar: calendar, locale: locale)
+    }
+
+    /// An event's details to paste into a message: title, when, where, the call's link, who, notes.
+    public static func details(title: String, start: Date, end: Date, allDay: Bool, location: String?, link: URL?,
+                               url: URL?, attendees: [String], notes: String?, calendar: Calendar = .current,
+                               locale: Locale = .current) -> String {
+        var lines = [title]
+        let day = interval(start, start, date: .full, time: .none, calendar: calendar, locale: locale)
+        lines.append("\(day), \(timeRange(start: start, end: end, allDay: allDay, calendar: calendar, locale: locale))")
+        if let location = location?.trimmingCharacters(in: .whitespacesAndNewlines), !location.isEmpty,
+           location != link?.absoluteString {
+            lines.append("Location: \(location)")
+        }
+        if let link { lines.append("Join: \(link.absoluteString)") }
+        if let url, url != link { lines.append("Link: \(url.absoluteString)") }
+        if !attendees.isEmpty { lines.append("Attendees: \(attendees.joined(separator: ", "))") }
+        if let notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+            lines.append("")
+            lines.append(notes)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Free slots as lines to paste, one day per line: "Thursday, Oct 15: 9:15 – 10:00 AM, 1:00 – 5:00 PM".
+    /// "No free time" when there's none.
+    public static func availability(_ slots: [DateInterval], calendar: Calendar = .current,
+                                    locale: Locale = .current) -> String {
+        guard !slots.isEmpty else { return "No free time" }
+        let dayFormatter = DateFormatter()
+        dayFormatter.locale = locale
+        dayFormatter.calendar = calendar
+        dayFormatter.timeZone = calendar.timeZone
+        dayFormatter.setLocalizedDateFormatFromTemplate("EEEEMMMd")
+        var lines: [String] = []
+        var current: Date?
+        var ranges: [String] = []
+        for slot in slots.sorted(by: { $0.start < $1.start }) {
+            if let day = current, !calendar.isDate(day, inSameDayAs: slot.start) {
+                lines.append("\(dayFormatter.string(from: day)): \(ranges.joined(separator: ", "))")
+                ranges = []
+            }
+            if ranges.isEmpty { current = slot.start }
+            ranges.append(interval(slot.start, slot.end, date: .none, time: .short, calendar: calendar, locale: locale))
+        }
+        if let day = current { lines.append("\(dayFormatter.string(from: day)): \(ranges.joined(separator: ", "))") }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func interval(_ start: Date, _ end: Date, date: DateIntervalFormatter.Style,
+                                 time: DateIntervalFormatter.Style, calendar: Calendar, locale: Locale) -> String {
+        let formatter = DateIntervalFormatter()
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateStyle = date
+        formatter.timeStyle = time
+        return formatter.string(from: start, to: end)
+    }
+}

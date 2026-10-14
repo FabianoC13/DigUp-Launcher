@@ -217,3 +217,98 @@ public enum FocusBrowser {
         """
     }
 }
+
+extension FocusBrowser {
+    /// The block page's file name: tabs showing it are found again by it, to give them their pages back.
+    public static let blockPageName = "digup-focus-blocked.html"
+
+    /// The block page's address for one blocked tab: `#t=<token>&h=<host>` tells the page what was blocked, and the
+    /// token finds the tab again when the session ends.
+    public static func blockPageAddress(page: URL, token: String, host: String) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._")
+        let encodedHost = host.addingPercentEncoding(withAllowedCharacters: allowed) ?? host
+        return page.absoluteString + "#t=" + token + "&h=" + encodedHost
+    }
+
+    /// Gives every tab showing the block page its page back: `argv` is pairs of a tab's token and its address. Returns
+    /// how many tabs it restored.
+    public static func restoreScript(bundleID: String) -> String {
+        """
+        on run argv
+            set restored to 0
+            tell application id "\(bundleID)"
+                repeat with theWindow in windows
+                    repeat with theTab in tabs of theWindow
+                        try
+                            set theAddress to URL of theTab
+                            if theAddress contains "\(blockPageName)#t=" then
+                                repeat with i from 1 to (count of argv) by 2
+                                    if theAddress contains ("#t=" & (item i of argv) & "&") then
+                                        set URL of theTab to (item (i + 1) of argv)
+                                        set restored to restored + 1
+                                        exit repeat
+                                    end if
+                                end repeat
+                            end if
+                        end try
+                    end repeat
+                end repeat
+            end tell
+            return restored
+        end run
+        """
+    }
+}
+
+/// A focus session's clock: how long it has run and how long it has left, not counting pauses. Wall-clock dates, so a
+/// Mac that slept through the end of a session finds it over when it wakes.
+public struct FocusTimer: Codable, Equatable, Sendable {
+    public var started: Date
+    /// Nil: until it's stopped.
+    public var duration: TimeInterval?
+    /// Paused since then; nil while it runs.
+    public var pausedAt: Date?
+    /// The pauses before the current one.
+    public var pausedBefore: TimeInterval
+
+    public init(started: Date, duration: TimeInterval?) {
+        self.started = started
+        self.duration = duration
+        pausedAt = nil
+        pausedBefore = 0
+    }
+
+    public var isPaused: Bool { pausedAt != nil }
+
+    /// Focused time so far.
+    public func elapsed(at now: Date) -> TimeInterval {
+        let paused = pausedBefore + (pausedAt.map { max(0, now.timeIntervalSince($0)) } ?? 0)
+        return max(0, now.timeIntervalSince(started) - paused)
+    }
+
+    /// Time left; nil for a session without an end.
+    public func remaining(at now: Date) -> TimeInterval? {
+        duration.map { max(0, $0 - elapsed(at: now)) }
+    }
+
+    public func isFinished(at now: Date) -> Bool {
+        remaining(at: now).map { $0 <= 0 } ?? false
+    }
+
+    public mutating func pause(at now: Date) {
+        guard pausedAt == nil else { return }
+        pausedAt = now
+    }
+
+    public mutating func resume(at now: Date) {
+        guard let pausedAt else { return }
+        pausedBefore += max(0, now.timeIntervalSince(pausedAt))
+        self.pausedAt = nil
+    }
+
+    /// More time ("Add 10 Minutes"); a session without an end stays without one.
+    public mutating func extend(by seconds: TimeInterval) {
+        if let duration { self.duration = duration + seconds }
+    }
+}
