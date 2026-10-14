@@ -14,6 +14,8 @@ final class AppController {
     let download: ModelDownload
     let hotkeys = HotkeyCenter()
     let updates: Updates
+    /// The Raycast-style launcher: apps, commands, answers, clipboard… in the panel, above the file results.
+    let launcher = Launcher()
     private let power: PowerPolicy
     private let schedule: IndexSchedule
     private(set) var panel: SearchPanelController!
@@ -58,6 +60,8 @@ final class AppController {
     /// `showWindow`: opened by hand (not at login), so the search window comes up once the app is set up.
     func start(showWindow: Bool = false) {
         panel = SearchPanelController(app: self)
+        launcher.panel = panel
+        launcher.start()
         searchWindow = SearchWindowController(app: self)
         settingsWindow = SettingsWindowController(app: self)
         statusMenu = StatusMenuController(model: model)

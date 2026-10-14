@@ -46,7 +46,9 @@ nonisolated struct AppSettings: Sendable {
     static let supportDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/DigUp")
     static let defaultIndexDirectory = supportDirectory.appendingPathComponent("index.noindex")
-    static let defaultHotkey = "cmd+shift+space"
+    /// ⌘Space, like Spotlight and Raycast (turn Spotlight's shortcut off in System Settings → Keyboard → Keyboard
+    /// Shortcuts → Spotlight, or macOS keeps it).
+    static let defaultHotkey = "cmd+space"
 
     /// The battery switch, in onboarding and Settings.
     static let batteryTitle = "Index on battery power"

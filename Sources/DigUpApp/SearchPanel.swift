@@ -11,6 +11,7 @@ enum SearchPhase: Equatable {
     case wordsOnly   // final, but there's no meaning search (the model is downloading, or the encoder failed)
     case codeHint    // "code:" and nothing yet: what to type
     case codeOff     // "code:" without code folders: how to turn code search on
+    case launcher    // too short for a meaning search of files: the launcher's results only
 }
 
 /// The hotkey panel: type, see results grouped by kind with the selected one previewed big on the right, and open /
@@ -71,6 +72,26 @@ final class SearchPanelController {
     /// Where ⌘C puts the file (debug runs use a private pasteboard so the real clipboard stays untouched).
     @ObservationIgnored var pasteboard = NSPasteboard.general
 
+    // MARK: Launcher state
+    /// A meaning search of files needs this many characters: fewer is an app or a command being typed.
+    static let minFileQuery = 3
+    /// The launcher's items for the query (root search), or the mode's list.
+    private(set) var items: [LauncherItem] = []
+    /// Modes pushed over the root search (Clipboard History, Quick AI…); the last one shows.
+    private(set) var modes: [any LauncherMode] = []
+    /// ⌘K is open, on this action of the selected item.
+    private(set) var actionsOpen = false
+    private(set) var actionSelection = 0
+    /// The app that was in front when the panel opened.
+    @ObservationIgnored private(set) var previousApp: NSRunningApplication?
+    @ObservationIgnored private var launcherTasks: [Task<Void, Never>] = []
+    /// What was typed in the root search when a mode was pushed (it comes back when the mode is popped).
+    @ObservationIgnored private var rootQuery = ""
+    @ObservationIgnored private(set) lazy var context = LauncherContext(panel: self)
+    var launcher: Launcher { app.launcher }
+    var appController: AppController { app }
+    var mode: (any LauncherMode)? { modes.last }
+
     init(app: AppController) {
         self.app = app
         model = app.model
@@ -80,12 +101,33 @@ final class SearchPanelController {
     var isVisible: Bool { window?.isVisible == true && !fading }
     var windowNumber: Int { window?.windowNumber ?? 0 }
     var isPreviewing: Bool { QLPreviewPanel.sharedPreviewPanelExists() && QLPreviewPanel.shared().isVisible }
-    /// The selectable rows in order: strong results group by group, the fold, then the weaker ones if unfolded.
+    /// The selectable rows in order: the launcher's items before the files, the strong file results group by group,
+    /// the fold, the weaker ones if unfolded, then the launcher's items after the files. A mode: its own list.
     var rowIDs: [String] {
+        if mode != nil { return items.map(\.id) }
+        return itemsBeforeFiles.map(\.id) + fileRowIDs + itemsAfterFiles.map(\.id)
+    }
+    var fileRowIDs: [String] {
         results.groups.flatMap { $0.rows.map(\.id) }
             + (results.weaker.isEmpty ? [] : [Self.weakerToggle])
             + (showWeaker ? results.weaker.map(\.id) : [])
     }
+    var itemsBeforeFiles: [LauncherItem] { mode != nil ? items : items.filter { !$0.section.afterFiles } }
+    var itemsAfterFiles: [LauncherItem] { mode != nil ? [] : items.filter(\.section.afterFiles) }
+    var selectedItem: LauncherItem? {
+        guard let selection else { return nil }
+        return items.first { $0.id == selection }
+    }
+    /// The selected item's actions, with the launcher's own (favorites, alias, hotkey) after them; a file's actions.
+    var selectedActions: [LauncherAction] {
+        if let item = selectedItem {
+            return item.actions + (item.tracksUsage ? Personalization.actions(for: item, context: context) : [])
+        }
+        if let row = selectedRow { return fileActions(row) }
+        return []
+    }
+    /// The list has something to show: results, a mode, or suggestions with nothing typed.
+    var showsList: Bool { phase != .empty || mode != nil || !items.isEmpty }
     var rows: [ResultRow] { results.groups.flatMap(\.rows) + (showWeaker ? results.weaker : []) }
     var selectedRow: ResultRow? { rows.first { $0.id == selection } }
 
@@ -97,6 +139,11 @@ final class SearchPanelController {
 
     func show() {
         let started = Date()
+        if !isVisible, let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            previousApp = front
+        }
+        let wasVisible = isVisible
         shownAt = started
         engine.prewarm()
         let window = self.window ?? makeWindow()
@@ -119,6 +166,8 @@ final class SearchPanelController {
             field.currentEditor()?.selectAll(nil)   // like Spotlight: the last query, selected
         }
         installKeyMonitor()
+        // Favorites and suggestions with nothing typed (and the last query's results otherwise, fresh).
+        if !wasVisible, mode == nil { runLauncher(query, generation: generation) }
         if activity == nil {
             activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
                                                              reason: "Search panel open")
@@ -140,6 +189,8 @@ final class SearchPanelController {
         activity = nil
         Thumbnails.shared.clear()
         Previews.shared.clear()
+        actionsOpen = false
+        if !modes.isEmpty { popToRoot() }
         guard let window, window.isVisible, !fading else { return }
         fading = true
         window.ignoresMouseEvents = true
@@ -163,16 +214,40 @@ final class SearchPanelController {
         let current = generation
         typedAt = Date()
         navigated = false
+        actionsOpen = false
         meaningTask?.cancel()
         let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A mode searches its own list, nothing else.
+        if let mode {
+            isCode = false
+            results = .empty
+            phase = .launcher
+            runMode(mode, query: query, generation: current)
+            resizeWindow()
+            return
+        }
         let codeText = CodeQuery.text(of: typed)
         isCode = codeText != nil
         let code = isCode
         let text = codeText ?? typed
+        if code {
+            stopLauncher()
+            items = []
+        } else {
+            runLauncher(query, generation: current)
+        }
         guard !typed.isEmpty else {
             results = .empty
-            selection = nil
+            selection = rowIDs.first
             phase = .empty
+            resizeWindow()
+            return
+        }
+        // One or two letters: an app or a command, not something to look for in files by meaning.
+        if !code, typed.count < Self.minFileQuery {
+            results = .empty
+            phase = .launcher
+            if !rowIDs.contains(where: { $0 == selection }) { selection = rowIDs.first }
             resizeWindow()
             return
         }
@@ -231,6 +306,125 @@ final class SearchPanelController {
         self.phase = phase
         resizeWindow()
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { updateQuickLook() }
+    }
+
+    // MARK: Launcher
+
+    private func stopLauncher() {
+        for task in launcherTasks { task.cancel() }
+        launcherTasks = []
+    }
+
+    /// The root search's providers, for what's typed; their items show as each one answers.
+    private func runLauncher(_ text: String, generation current: Int) {
+        stopLauncher()
+        launcherTasks = launcher.search(LauncherQuery(text)) { [weak self] found in
+            guard let self, current == generation, mode == nil else { return }
+            showItems(found)
+        }
+    }
+
+    /// The mode's list for what's typed.
+    private func runMode(_ mode: any LauncherMode, query text: String, generation current: Int) {
+        stopLauncher()
+        launcherTasks = [Task { [weak self] in
+            let found = await mode.items(for: LauncherQuery(text))
+            guard let self, !Task.isCancelled, current == generation, self.mode === mode else { return }
+            showItems(found)
+        }]
+    }
+
+    private func showItems(_ found: [LauncherItem]) {
+        items = found
+        // Follow the top row until you pick something with the arrow keys.
+        if !navigated || !rowIDs.contains(where: { $0 == selection }) {
+            selection = rowIDs.first
+        }
+        resizeWindow()
+    }
+
+    /// Searches again with what's typed (a mode's list changed).
+    func refresh() {
+        let selected = selection
+        let wasNavigated = navigated
+        queryChanged()
+        navigated = wasNavigated
+        selection = selected
+    }
+
+    /// Opens a mode over the root search.
+    func push(_ mode: any LauncherMode, query initial: String = "") {
+        if modes.isEmpty { rootQuery = query }
+        modes.append(mode)
+        actionsOpen = false
+        items = []
+        selection = nil
+        if query == initial { queryChanged() } else { query = initial }
+        resizeWindow()
+        if let field { window?.makeFirstResponder(field) }
+        field?.currentEditor()?.selectedRange = NSRange(location: (initial as NSString).length, length: 0)
+    }
+
+    /// Back one mode (to the root search from the first).
+    func popMode() {
+        guard let popped = modes.popLast() else { return }
+        popped.didClose()
+        actionsOpen = false
+        items = []
+        let restore = modes.isEmpty ? rootQuery : ""
+        if query == restore { queryChanged() } else { query = restore }
+        resizeWindow()
+    }
+
+    func popToRoot() {
+        while !modes.isEmpty { popMode() }
+    }
+
+    /// Runs one of an item's actions: the panel hides first unless the action keeps it.
+    func run(_ action: LauncherAction, of item: LauncherItem?, recordUsage: Bool = true) {
+        if let item, recordUsage {
+            launcher.recordUse(item, query: mode == nil ? query : nil)
+        }
+        actionsOpen = false
+        if !action.keepsPanelOpen, isVisible { dismissForAction() }
+        let context = self.context
+        Task { await action.run(context) }
+    }
+
+    /// Hides the panel after an action: the keyboard goes back to the app you came from at once.
+    func dismissForAction() {
+        dismiss()
+    }
+
+    func flashNote(_ text: String) {
+        flash(text)
+    }
+
+    /// Tab: the question to Quick AI.
+    func askAI() {
+        QuickAIFeature.ask(query.trimmingCharacters(in: .whitespacesAndNewlines), context: context)
+    }
+
+    /// ⌘K on a file result: what you'd do with a file.
+    private func fileActions(_ row: ResultRow) -> [LauncherAction] {
+        [
+            LauncherAction(id: "open", title: row.openTitle, symbol: "arrow.up.forward.app") { [weak self] _ in
+                self?.engine.open(row)
+            },
+            LauncherAction(id: "reveal", title: "Show in Finder", symbol: "folder") { _ in
+                NSWorkspace.shared.activateFileViewerSelecting([row.url])
+            },
+            LauncherAction(id: "quicklook", title: "Quick Look", symbol: "eye", shortcut: LauncherShortcut("y", .command),
+                           keepsPanelOpen: true) { [weak self] _ in self?.toggleQuickLook() },
+            LauncherAction(id: "copy", title: "Copy File", symbol: "doc.on.doc", shortcut: .copy,
+                           keepsPanelOpen: true) { [weak self] _ in self?.copySelected() },
+            LauncherAction(id: "copy-path", title: "Copy Path", symbol: "link",
+                           shortcut: LauncherShortcut("c", [.command, .shift]), keepsPanelOpen: true) { context in
+                context.copy(row.url.path)
+            },
+            LauncherAction(id: "window", title: "Open in DigUp Window", symbol: "macwindow",
+                           shortcut: LauncherShortcut("o", .command)) { [weak self] _ in self?.openInWindow() },
+        ]
     }
 
     func toggleWeaker() {
@@ -300,17 +494,78 @@ final class SearchPanelController {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             .subtracting([.capsLock, .numericPad, .function])
         let previewing = QLPreviewPanel.sharedPreviewPanelExists() && QLPreviewPanel.shared().isVisible
-        switch event.keyCode {
-        case 53:  // Esc
-            if previewing { QLPreviewPanel.shared().orderOut(nil) } else { dismiss() }
+        // The action panel (⌘K) has the keys while it's open.
+        if actionsOpen {
+            let actions = selectedActions
+            switch event.keyCode {
+            case 53:  // Esc
+                actionsOpen = false
+            case 125, 126:  // ↓ ↑
+                guard !actions.isEmpty else { return true }
+                actionSelection = max(0, min(actions.count - 1, actionSelection + (event.keyCode == 125 ? 1 : -1)))
+            case 36, 76:  // ↩
+                if actions.indices.contains(actionSelection) { run(actions[actionSelection], of: selectedItem) }
+            case 40 where modifiers == .command:  // ⌘K
+                actionsOpen = false
+            default:
+                if let action = actions.first(where: { $0.shortcut?.matches(event) == true }) {
+                    run(action, of: selectedItem)
+                } else {
+                    return false
+                }
+            }
             return true
+        }
+        if event.keyCode == 53 {  // Esc
+            if previewing {
+                QLPreviewPanel.shared().orderOut(nil)
+            } else if mode != nil {
+                popMode()
+            } else {
+                dismiss()
+            }
+            return true
+        }
+        if event.keyCode == 40, modifiers == .command, !selectedActions.isEmpty {  // ⌘K
+            actionSelection = 0
+            actionsOpen = true
+            return true
+        }
+        if let mode {
+            if mode.handle(event, query: query, context: context) { return true }
+            // ⌫ in an empty field goes back, like Raycast.
+            if event.keyCode == 51, modifiers.isEmpty, query.isEmpty {
+                popMode()
+                return true
+            }
+        } else if event.keyCode == 48, modifiers.isEmpty, !isCode {  // Tab: ask AI
+            askAI()
+            return true
+        }
+        // The selected item's own shortcuts (⌘C, ⌃X…).
+        // ↩ and ⌘↩ are the first two actions', below.
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        if let item = selectedItem, !(isReturn && (modifiers.isEmpty || modifiers == .command)),
+           let action = selectedActions.first(where: { $0.shortcut?.matches(event) == true }) {
+            run(action, of: item)
+            return true
+        }
+        switch event.keyCode {
         case 125, 126:  // ↓ ↑
             guard modifiers.isEmpty else { return false }
             moveSelection(by: event.keyCode == 125 ? 1 : -1)
             navigated = true
             return true
         case 36, 76:  // ↩, enter
-            if selection == Self.weakerToggle, modifiers.isEmpty {
+            if let item = selectedItem {
+                if modifiers.isEmpty, let action = item.primary {
+                    run(action, of: item)
+                } else if modifiers == .command, let action = item.secondary {
+                    run(action, of: item)
+                } else {
+                    return false
+                }
+            } else if selection == Self.weakerToggle, modifiers.isEmpty {
                 toggleWeaker()
             } else if modifiers == .command {
                 revealSelected()
@@ -320,16 +575,19 @@ final class SearchPanelController {
                 return false
             }
             return true
-        case 49 where modifiers.isEmpty && (navigated || previewing) && selection != nil:  // Space
-            if selection == Self.weakerToggle { toggleWeaker() } else { toggleQuickLook() }
-            return true
-        case 16 where modifiers == .command:  // ⌘Y
+        case 49 where modifiers.isEmpty && (navigated || previewing) && selectedRow != nil:  // Space
             toggleQuickLook()
             return true
-        case 31 where modifiers == .command:  // ⌘O: the same search in the window, for a bigger look
+        case 49 where modifiers.isEmpty && navigated && selection == Self.weakerToggle:
+            toggleWeaker()
+            return true
+        case 16 where modifiers == .command && selectedRow != nil:  // ⌘Y
+            toggleQuickLook()
+            return true
+        case 31 where modifiers == .command && mode == nil:  // ⌘O: the same search in the window, for a bigger look
             openInWindow()
             return true
-        case 8 where modifiers == .command:
+        case 8 where modifiers == .command && selectedRow != nil:
             // ⌘C copies the selected file, except right after you selected some of the query text (the panel opens
             // with the last query selected, and arrowing to a result means you want the file).
             let textSelected = (field?.currentEditor()?.selectedRange.length ?? 0) > 0
@@ -352,6 +610,12 @@ final class SearchPanelController {
     func select(_ row: ResultRow) {
         selection = row.id
         navigated = true
+    }
+
+    func select(_ item: LauncherItem) {
+        selection = item.id
+        navigated = true
+        actionsOpen = false
     }
 
     // MARK: Actions
@@ -450,7 +714,7 @@ final class SearchPanelController {
     }
 
     private var desiredHeight: CGFloat {
-        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Self.fieldHeight : Self.expandedHeight
+        showsList ? Self.expandedHeight : Self.fieldHeight
     }
 
     /// Centered on the screen with the pointer, a little above the middle, like Spotlight.

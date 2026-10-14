@@ -8,10 +8,19 @@ struct SearchPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if controller.phase != .empty {
+            if controller.showsList {
                 Divider()
                 content
                     .frame(maxHeight: .infinity)
+                    .overlay(alignment: .bottomTrailing) {
+                        if controller.actionsOpen {
+                            ActionPanelView(actions: controller.selectedActions,
+                                            selection: controller.actionSelection) { action in
+                                controller.run(action, of: controller.selectedItem)
+                            }
+                            .padding(10)
+                        }
+                    }
                 Divider()
                 footer
             }
@@ -25,17 +34,27 @@ struct SearchPanelView: View {
 
     private var header: some View {
         HStack(spacing: 11) {
-            // A search of code shows it: the field's magnifier becomes code's mark.
-            Image(systemName: controller.isCode ? FileKind.code.symbol : "magnifyingglass")
-                .font(.system(size: controller.isCode ? 17 : 20, weight: .semibold))
-                .foregroundStyle(Brand.gradient)
-                .frame(width: 24)
-                .help(controller.isCode ? "Searching your code" : "")
+            if let mode = controller.mode {
+                Button { controller.popMode() } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Back (Esc)")
+                ModeChip(mode: mode)
+            } else {
+                // A search of code shows it: the field's magnifier becomes code's mark.
+                Image(systemName: controller.isCode ? FileKind.code.symbol : "magnifyingglass")
+                    .font(.system(size: controller.isCode ? 17 : 20, weight: .semibold))
+                    .foregroundStyle(Brand.gradient)
+                    .frame(width: 24)
+                    .help(controller.isCode ? "Searching your code" : "")
+            }
             // With code search on, one example is code's: nothing else in the panel shows "code:".
             SearchField(text: $controller.query, fontSize: 22,
-                        placeholder: controller.model.hasCode
-                            ? "Describe it: “zebra in a video”, “code: retry with backoff”…"
-                            : "Describe it: “payment error screenshot”, “zebra in a video”…") {
+                        placeholder: controller.mode?.placeholder ?? (controller.model.hasCode
+                            ? "Search apps, commands and files, or press Tab to ask AI…"
+                            : "Search apps, commands and files, or press Tab to ask AI…")) {
                 controller.field = $0
             }
             if controller.phase == .words, controller.encoder == .starting {
@@ -56,11 +75,18 @@ struct SearchPanelView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if controller.phase == .codeHint || controller.phase == .codeOff {
+        if let mode = controller.mode, let view = mode.makeView(context: controller.context) {
+            view
+        } else if controller.phase == .codeHint || controller.phase == .codeOff {
             CodeHint(controller: controller)
-        } else if controller.results.isEmpty {
+        } else if controller.results.isEmpty, controller.items.isEmpty {
             VStack(spacing: 8) {
-                if controller.phase == .words {
+                if controller.mode != nil || controller.phase == .launcher || controller.phase == .empty {
+                    Text("No results").font(.system(size: 15, weight: .semibold))
+                    if controller.mode == nil {
+                        Text("Press Tab to ask AI instead.").foregroundStyle(.secondary)
+                    }
+                } else if controller.phase == .words {
                     Text("Searching…").foregroundStyle(.secondary)
                 } else if !controller.model.hasFolders {
                     Text("No folders chosen yet").font(.system(size: 15, weight: .semibold))
@@ -84,7 +110,9 @@ struct SearchPanelView: View {
                     .frame(width: SearchPanelController.listWidth)
                 Divider()
                 Group {
-                    if let row = controller.selectedRow {
+                    if let item = controller.selectedItem {
+                        LauncherDetailView(item: item) { action in controller.run(action, of: item) }
+                    } else if let row = controller.selectedRow {
                         VStack(alignment: .leading, spacing: 10) {
                             PreviewPane(row: row, imageSize: CGSize(width: 410, height: 214),
                                         open: { controller.openSelected() })
@@ -119,18 +147,38 @@ struct SearchPanelView: View {
     /// The keys, saying where ↩ and Space go for a page or moment: "↩ Open at 0:06   ␣ Quick Look at 0:06", and for
     /// code, at which line: "↩ Open in Zed at line 12".
     private var keysText: String {
+        if controller.actionsOpen { return "↩ Run   ↑↓ Choose   Esc Close" }
+        if let hint = controller.mode?.keysHint { return hint }
+        if let item = controller.selectedItem {
+            var keys = item.primary.map { "↩ \($0.title)" } ?? ""
+            if let secondary = item.secondary { keys += "   ⌘↩ \(secondary.title)" }
+            keys += "   ⌘K Actions"
+            if controller.mode == nil { keys += "   ⇥ Ask AI" }
+            return keys
+        }
+        if controller.mode == nil, controller.selectedRow == nil {
+            return controller.query.isEmpty ? "⌘K Actions" : "⇥ Ask AI"
+        }
         let row = controller.selectedRow
         if let row, row.kind == .code {
             let line = row.segment == .lines ? " at line \(row.codeLine)" : ""
-            return "↩ \(row.openTitle)\(line)   ⌘↩ Reveal   ␣ Quick Look   ⌘C Copy"
+            return "↩ \(row.openTitle)\(line)   ⌘↩ Reveal   ␣ Quick Look   ⌘K Actions"
         }
         let place = row?.jump.map { " at \($0)" } ?? ""
-        return "↩ \(row?.openTitle ?? "Open")   ⌘↩ Reveal   ␣ Quick Look\(place)   ⌘C Copy"
+        return "↩ \(row?.openTitle ?? "Open")   ⌘↩ Reveal   ␣ Quick Look\(place)   ⌘K Actions"
     }
 
     private var statusText: String {
         if let note = controller.note { return note }
+        if let mode = controller.mode {
+            if let status = mode.statusHint { return status }
+            let count = controller.items.count
+            return count == 1 ? "1 item" : "\(count) items"
+        }
         switch controller.phase {
+        case .launcher:
+            let count = controller.items.count
+            return count == 1 ? "1 result" : "\(count) results"
         case .words:
             return controller.encoder == .starting ? "Matching words; meaning search is warming up…" : "Matching words…"
         case .wordsOnly:
@@ -138,6 +186,9 @@ struct SearchPanelView: View {
         case .codeHint, .codeOff:
             return controller.phase == .codeOff ? "Code search is off" : "Searching your code"
         case .meaning, .empty:
+            if controller.phase == .empty {
+                return controller.items.isEmpty ? "" : "Favorites and suggestions"
+            }
             if controller.isCode, let indexing = controller.model.status.code.indexing, indexing.total > 0 {
                 return "Still reading code (\(Int(Double(indexing.done) / Double(indexing.total) * 100))%): some isn't in yet"
             }
@@ -157,6 +208,7 @@ private struct ResultList: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
+                    ItemSections(controller: controller, items: controller.itemsBeforeFiles)
                     ForEach(controller.results.groups) { group in
                         GroupHeader(title: group.kind.title)
                         ForEach(group.rows) { row in
@@ -203,6 +255,7 @@ private struct ResultList: View {
                             }
                         }
                     }
+                    ItemSections(controller: controller, items: controller.itemsAfterFiles)
                 }
                 .padding(.horizontal, 8)
                 .padding(.bottom, 8)
@@ -211,6 +264,46 @@ private struct ResultList: View {
                 if let id { proxy.scrollTo(id) }
             }
         }
+    }
+}
+
+/// The launcher's items, under a header per section.
+private struct ItemSections: View {
+    let controller: SearchPanelController
+    let items: [LauncherItem]
+
+    var body: some View {
+        ForEach(Array(Self.sections(items).enumerated()), id: \.offset) { _, group in
+            if group.section != .answer {
+                GroupHeader(title: group.section.title)
+            } else {
+                Spacer().frame(height: 6)
+            }
+            ForEach(group.items) { item in
+                LauncherRow(item: item, selected: item.id == controller.selection)
+                    .id(item.id)
+                    .overlay(ItemClickArea(actions: item.actions,
+                                           onClick: { controller.select(item) },
+                                           onDoubleClick: {
+                                               controller.select(item)
+                                               if let action = item.primary { controller.run(action, of: item) }
+                                           },
+                                           onAction: { action in controller.run(action, of: item) }))
+            }
+        }
+    }
+
+    /// Consecutive items of a section together, in the order they come.
+    static func sections(_ items: [LauncherItem]) -> [(section: LauncherSection, items: [LauncherItem])] {
+        var groups: [(section: LauncherSection, items: [LauncherItem])] = []
+        for item in items {
+            if let last = groups.indices.last, groups[last].section == item.section {
+                groups[last].items.append(item)
+            } else {
+                groups.append((item.section, [item]))
+            }
+        }
+        return groups
     }
 }
 

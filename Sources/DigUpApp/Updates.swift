@@ -23,6 +23,12 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     /// Dev and test runs (their own defaults suite) don't check: Sparkle keeps its state in the app's real defaults.
     /// `-debugUpdates YES` lets one check anyway.
     func start() {
+        // This build is a customized fork (the launcher): an update from upstream would replace it, so it never checks.
+        // `-debugUpdates YES` still lets one run, for testing the updater itself.
+        guard UserDefaults.standard.bool(forKey: "debugUpdates") else {
+            log("updates: off in this custom build")
+            return
+        }
         let defaults = UserDefaults.standard
         guard defaults.string(forKey: "defaultsSuite") == nil || defaults.bool(forKey: "debugUpdates") else { return }
         controller.startUpdater()
@@ -39,6 +45,15 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
 
     /// "Check for Updates…" and the waiting update's menu item: Sparkle's window, in front.
     func checkNow() {
+        guard UserDefaults.standard.bool(forKey: "debugUpdates") else {
+            let alert = NSAlert()
+            alert.messageText = "Updates are off"
+            alert.informativeText = "This is a customized build of DigUp. Updating from the original project would replace "
+                + "your launcher, so it doesn't check for updates. Rebuild it from its source folder instead."
+            bringAppToFront()
+            alert.runModal()
+            return
+        }
         controller.checkForUpdates(nil)
     }
 

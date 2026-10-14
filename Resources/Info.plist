@@ -22,6 +22,17 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.6.1</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.abdurrahim.DigUp</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>digup</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>12</string>
 	<key>LSApplicationCategoryType</key>
@@ -31,7 +42,11 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>DigUp asks QuickTime Player to open a recording at the moment that matched your search.</string>
+	<string>DigUp controls other apps for commands you run: QuickTime Player to open a recording at its moment, System Events for system commands, and browsers for Focus.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>DigUp shows your schedule and lets you join meetings from the search panel.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>DigUp shows your schedule and lets you join meetings from the search panel.</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>DigUp indexes the folders you choose so you can search them by describing what's inside. Everything stays on this Mac.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
@@ -43,7 +58,7 @@
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>DigUp indexes the folders you choose so you can search them by describing what's inside. Everything stays on this Mac.</string>
 	<key>SUEnableAutomaticChecks</key>
-	<true/>
+	<false/>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/ARahim3/DigUp/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
