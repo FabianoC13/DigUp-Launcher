@@ -95,6 +95,15 @@ public struct QuicklinkTemplate: Equatable, Sendable {
     /// It asks for something before it opens.
     public var takesArgument: Bool { !arguments.isEmpty }
 
+    /// It has `{clipboard}`: only then is the clipboard read to fill it (macOS may ask the user about apps that read
+    /// it).
+    public var usesClipboard: Bool {
+        pieces.contains { piece in
+            if case .token(let token) = piece { return token.name == "clipboard" }
+            return false
+        }
+    }
+
     /// Placeholders are percent-encoded by default: everywhere but in a file path.
     public var encodesByDefault: Bool { !Self.isPath(link) }
 

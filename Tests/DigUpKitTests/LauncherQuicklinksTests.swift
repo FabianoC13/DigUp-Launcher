@@ -59,6 +59,8 @@ import Testing
     @Test func clipboardDateAndUUID() {
         let template = QuicklinkTemplate(#"https://x.com/{clipboard}/{date format="yyyy-MM-dd"}/{date format="yyyy-MM-dd" offset="+1d -1y"}/{uuid}"#)
         #expect(!template.takesArgument)
+        #expect(template.usesClipboard)
+        #expect(!QuicklinkTemplate("https://x.com/{query}").usesClipboard)
         #expect(template.filled(values(clipboard: "copied text"))
             == "https://x.com/copied%20text/2027-01-15/2026-01-16/UUID-1")
         #expect(QuicklinkTemplate("https://x.com/{day}").filled(values()) == "https://x.com/Friday")

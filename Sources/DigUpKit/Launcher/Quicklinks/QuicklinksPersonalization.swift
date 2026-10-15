@@ -150,13 +150,16 @@ public struct QuicklinksSettings: Codable, Equatable, Sendable {
     public var hyperQuickPress = QuickPress.nothing
     /// The HID usage Caps Lock was mapped to before the Hyper Key took it over, to put back when it's turned off.
     public var previousCapsLock: UInt64?
+    /// Caps Lock → F18 is in place (DigUp put it there), so a launch after a crash knows to take it out.
+    public var hyperMappingApplied = false
     /// Item ids a `digup://run` link may run without asking first.
     public var trustedDeeplinks: [String] = []
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case fallbacks, hyperKeyEnabled, hyperIncludesShift, hyperQuickPress, previousCapsLock, trustedDeeplinks
+        case fallbacks, hyperKeyEnabled, hyperIncludesShift, hyperQuickPress, previousCapsLock, hyperMappingApplied
+        case trustedDeeplinks
     }
 
     /// Older files may lack newer keys, and an unknown quick press reads as none.
@@ -167,6 +170,7 @@ public struct QuicklinksSettings: Codable, Equatable, Sendable {
         hyperIncludesShift = try container.decodeIfPresent(Bool.self, forKey: .hyperIncludesShift) ?? true
         hyperQuickPress = (try? container.decodeIfPresent(QuickPress.self, forKey: .hyperQuickPress)) ?? .nothing
         previousCapsLock = try container.decodeIfPresent(UInt64.self, forKey: .previousCapsLock)
+        hyperMappingApplied = try container.decodeIfPresent(Bool.self, forKey: .hyperMappingApplied) ?? false
         trustedDeeplinks = try container.decodeIfPresent([String].self, forKey: .trustedDeeplinks) ?? []
     }
 }
