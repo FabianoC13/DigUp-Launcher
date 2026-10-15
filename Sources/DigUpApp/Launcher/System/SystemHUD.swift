@@ -60,6 +60,8 @@ enum SystemHUD {
         panel.ignoresMouseEvents = true
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
+        // Closing the launcher hides DigUp (`NSApp.hide`), which would take the bubble with it.
+        panel.canHide = false
         panel.animationBehavior = .none
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         return panel
