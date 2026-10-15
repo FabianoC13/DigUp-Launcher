@@ -84,6 +84,8 @@ final class SearchPanelController {
     private(set) var items: [LauncherItem] = []
     /// Modes pushed over the root search (Clipboard History, Quick AI…); the last one shows.
     private(set) var modes: [any LauncherMode] = []
+    /// A picture is being dragged over the panel: it shows where it'll go.
+    private(set) var dropTargeted = false
     /// ⌘K is open, on this action of the selected item.
     private(set) var actionsOpen = false
     private(set) var actionSelection = 0
@@ -788,6 +790,13 @@ final class SearchPanelController {
         let container = Self.background(containing: hosting)
         window.contentView = container
         backdrop = container.subviews.first
+        // A picture dropped anywhere on the panel (the field has its own copy of this) opens Quick AI with it attached.
+        container.onImages = { [weak self] images in
+            guard let self else { return }
+            dropTargeted = false
+            QuickAIFeature.attachImages(images, context: context)
+        }
+        container.onTargeted = { [weak self] targeted in self?.dropTargeted = targeted }
         self.window = window
         PanelAppearance.shared.onChange.append { [weak self] in self?.applyAppearance() }
         applyAppearance()
@@ -832,7 +841,7 @@ final class SearchPanelController {
 
     /// Glass (or vibrancy before macOS 26) behind the SwiftUI content. The content sits beside the glass rather than
     /// inside it, since NSGlassEffectView resizes its contentView itself.
-    private static func background(containing content: NSView) -> NSView {
+    private static func background(containing content: NSView) -> PanelDropView {
         let radius: CGFloat = 18
         let backdrop: NSView
         if #available(macOS 26.0, *) {
@@ -849,7 +858,7 @@ final class SearchPanelController {
             effect.layer?.masksToBounds = true
             backdrop = effect
         }
-        let container = NSView()
+        let container = PanelDropView()
         for view in [backdrop, content] {
             view.frame = container.bounds
             view.autoresizingMask = [.width, .height]
@@ -861,6 +870,51 @@ final class SearchPanelController {
     /// Draws the panel into a PNG (see `Snapshot`); the glass doesn't draw that way, so it's on the window color.
     func snapshot(to url: URL) throws {
         try Snapshot.write(window, to: url, cornerRadius: 18)
+    }
+}
+
+/// The panel's root view: takes pictures dropped anywhere on it (the views inside don't take drags, so they come
+/// here), for Quick AI.
+final class PanelDropView: NSView {
+    var onImages: ([QuickAIPendingImage]) -> Void = { _ in }
+    var onTargeted: (Bool) -> Void = { _ in }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        registerForDraggedTypes([.fileURL, .png, .tiff, NSPasteboard.PasteboardType("public.jpeg"),
+                                 NSPasteboard.PasteboardType("public.heic")])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard QuickAIImages.canAccept(sender) else { return [] }
+        onTargeted(true)
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        QuickAIImages.canAccept(sender) ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onTargeted(false)
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        onTargeted(false)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        QuickAIImages.canAccept(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let images = QuickAIImages.fromDraggingInfo(sender)
+        onTargeted(false)
+        guard !images.isEmpty else { return false }
+        onImages(images)
+        return true
     }
 }
 

@@ -27,6 +27,22 @@ struct SearchPanelView: View {
         }
         .frame(width: SearchPanelController.width)
         .frame(maxHeight: .infinity, alignment: .top)
+        .overlay {
+            if controller.dropTargeted {
+                // A picture over the panel: where it goes.
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Brand.amber, style: StrokeStyle(lineWidth: 3, dash: [9, 6]))
+                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Brand.ember.opacity(0.18)))
+                    .overlay {
+                        Label("Drop to ask Quick AI about it", systemImage: "photo.badge.plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(.regularMaterial))
+                    }
+                    .allowsHitTesting(false)
+            }
+        }
         // Glass alone is too see-through over busy backgrounds.
         .background(Color(nsColor: .windowBackgroundColor).opacity(PanelAppearance.shared.look.tint))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -550,8 +566,20 @@ final class DigUpFieldEditor: NSTextView {
     /// The search field that owns this editor while it's editing (set from `SearchPanelWindow.fieldEditor`).
     weak var digUpField: FocusReportingField?
 
+    /// The panel's drop view, which takes pictures for the whole panel (its highlight stays on over the field).
+    private var panelDrop: PanelDropView? { window?.contentView as? PanelDropView }
+
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        QuickAIImages.canAccept(sender) ? .copy : super.draggingEntered(sender)
+        guard QuickAIImages.canAccept(sender), let panelDrop else { return super.draggingEntered(sender) }
+        return panelDrop.draggingEntered(sender)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        if let sender, QuickAIImages.canAccept(sender), let panelDrop {
+            panelDrop.draggingExited(sender)
+        } else {
+            super.draggingExited(sender)
+        }
     }
 
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
@@ -559,8 +587,10 @@ final class DigUpFieldEditor: NSTextView {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard QuickAIImages.canAccept(sender) else { return super.performDragOperation(sender) }
+        if let panelDrop { return panelDrop.performDragOperation(sender) }
         let images = QuickAIImages.fromDraggingInfo(sender)
-        guard !images.isEmpty else { return super.performDragOperation(sender) }
+        guard !images.isEmpty else { return false }
         digUpField?.onImages(images)
         return true
     }
