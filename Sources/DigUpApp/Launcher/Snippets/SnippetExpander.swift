@@ -118,8 +118,9 @@ final class SnippetExpander {
             return
         }
         guard !event.ownKey, !expanding else { return }
-        // Password fields, and DigUp's own windows (the snippet editor would expand the keyword being defined).
-        if IsSecureEventInputEnabled() || NSApp.isActive {
+        // Password fields, and DigUp's own windows (the snippet editor would expand the keyword being defined). The
+        // search panel has the keys without DigUp being active.
+        if IsSecureEventInputEnabled() || NSApp.isActive || NSApp.keyWindow != nil {
             matcher.reset()
             return
         }

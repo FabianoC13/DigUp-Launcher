@@ -58,6 +58,7 @@ final class SearchPanelController {
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var mouseMonitor: Any?
     @ObservationIgnored private var resignObserver: NSObjectProtocol?
+    @ObservationIgnored private var resignKeyObserver: NSObjectProtocol?
     /// The glass behind the content (hidden when a look has no blur).
     @ObservationIgnored private var backdrop: NSView?
     @ObservationIgnored private var keyWindowObserver: NSObjectProtocol?
@@ -151,14 +152,20 @@ final class SearchPanelController {
         let window = self.window ?? makeWindow()
         placeWindow(window)
         if AppController.offscreen { return }
-        // Activate for real: a background app's main thread drops to efficiency cores (App Nap), which can make
-        // search 5× slower.
-        bringAppToFront()
+        // DigUp isn't activated (the panel takes the keys on its own), so you stay in the Space you're in, a
+        // full-screen app's too. The activity keeps App Nap off instead: a background app's main thread drops to
+        // efficiency cores, which can make search 5× slower.
+        if activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
+                                                             reason: "Search panel open")
+        }
+        if NSApp.isHidden { NSApp.unhideWithoutActivation() }   // Esc, or a Quicklink, hid it
         fading = false   // shown again while it faded out: it comes back from where it got to
         window.ignoresMouseEvents = false
         window.canHide = true
         if !window.isVisible { window.alphaValue = 0 }
-        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        window.makeKey()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Self.fadeIn
             window.animator().alphaValue = PanelAppearance.shared.look.opacity
@@ -170,10 +177,6 @@ final class SearchPanelController {
         installKeyMonitor()
         // Favorites and suggestions with nothing typed (and the last query's results otherwise, fresh).
         if !wasVisible, mode == nil { runLauncher(query, generation: generation) }
-        if activity == nil {
-            activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
-                                                             reason: "Search panel open")
-        }
         let shown = Date()
         DispatchQueue.main.async {
             // The next turn of the main loop, after the window's first layout and display.
@@ -194,6 +197,13 @@ final class SearchPanelController {
         actionsOpen = false
         if !modes.isEmpty { popToRoot() }
         guard let window, window.isVisible, !fading else { return }
+        if !NSApp.isActive {
+            // The usual case (not activated): gone at once, so the keys are back in the app you were in before
+            // anything is pasted or typed there. While it faded it would keep them.
+            window.orderOut(nil)
+            window.canHide = true
+            return
+        }
         fading = true
         window.ignoresMouseEvents = true
         NSAnimationContext.runAnimationGroup { context in
@@ -459,6 +469,19 @@ final class SearchPanelController {
             if field.bounds.contains(field.convert(event.locationInWindow, from: nil)) { navigated = false }
             return event
         }
+        // A click in another app. The panel opens without activating DigUp, so that's the panel losing the keys to
+        // no window of DigUp's; DigUp itself resigning, when it was active (Quick Look activates it).
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                DispatchQueue.main.async { [weak self] in   // once the new key window is set
+                    guard let self, NSApp.keyWindow == nil, !PanelAppearance.shared.tuning else { return }
+                    self.hide()
+                }
+            }
+        }
         resignObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -487,10 +510,11 @@ final class SearchPanelController {
         for monitor in [keyMonitor, mouseMonitor].compactMap({ $0 }) { NSEvent.removeMonitor(monitor) }
         keyMonitor = nil
         mouseMonitor = nil
-        for observer in [resignObserver, keyWindowObserver].compactMap({ $0 }) {
+        for observer in [resignObserver, resignKeyObserver, keyWindowObserver].compactMap({ $0 }) {
             NotificationCenter.default.removeObserver(observer)
         }
         resignObserver = nil
+        resignKeyObserver = nil
         keyWindowObserver = nil
     }
 
@@ -681,6 +705,8 @@ final class SearchPanelController {
 
     /// Esc: hide, and give the keyboard back to the app you came from (at once: the fade doesn't hold it).
     private func dismiss() {
+        // Not activated, the app you came from still has the keyboard: the panel just goes.
+        guard NSApp.isActive else { return hide() }
         // Hiding the app gives the keyboard back at once; the panel is left out of it so that it can still fade.
         window?.canHide = false
         hide()
@@ -705,6 +731,10 @@ final class SearchPanelController {
             panel.orderOut(nil)
         } else if selectedRow != nil {
             updateQuickLook()
+            // Quick Look takes the keys only from an active app. With the panel up in this Space, activating DigUp
+            // keeps you in it, and Quick Look joins it over a full-screen app.
+            bringAppToFront()
+            panel.collectionBehavior.insert(.fullScreenAuxiliary)
             panel.makeKeyAndOrderFront(nil)
         }
     }
@@ -801,7 +831,8 @@ final class SearchPanelController {
     }
 }
 
-/// The floating panel. Unlike most floating panels it becomes key, because you type into it.
+/// The floating panel. Unlike most floating panels it becomes key, because you type into it. It does so without
+/// activating DigUp, like Spotlight's: activating would take you out of a full-screen app to the desktop.
 final class SearchPanelWindow: NSPanel, QLPreviewPanelDataSource {
     /// What Space / ⌘Y previews.
     var previewURL: URL?
@@ -809,7 +840,7 @@ final class SearchPanelWindow: NSPanel, QLPreviewPanelDataSource {
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: SearchPanelController.width,
                                        height: SearchPanelController.fieldHeight),
-                   styleMask: [.borderless, .fullSizeContentView], backing: .buffered, defer: true)
+                   styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel], backing: .buffered, defer: true)
         isFloatingPanel = true
         level = .floating
         hidesOnDeactivate = false   // the controller hides it, and also tidies up
