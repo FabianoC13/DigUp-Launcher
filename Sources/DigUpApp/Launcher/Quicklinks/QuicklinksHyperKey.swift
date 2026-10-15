@@ -22,6 +22,7 @@ final class QuicklinksHyperKey {
     private var permissionTimer: Timer?
     private var terminateObserver: NSObjectProtocol?
 
+    private let ownProcess = ProcessInfo.processInfo.processIdentifier
     nonisolated private static let hidutil = URL(fileURLWithPath: "/usr/bin/hidutil")
 
     private init() {}
@@ -148,6 +149,10 @@ final class QuicklinksHyperKey {
             return Unmanaged.passUnretained(event)
         }
         guard type == .keyDown || type == .keyUp else { return Unmanaged.passUnretained(event) }
+        // DigUp's own keystrokes (a paste's ⌘V while Caps Lock is still held after a hotkey) go through as they are.
+        if event.getIntegerValueField(.eventSourceUnixProcessID) == Int64(ownProcess) {
+            return Unmanaged.passUnretained(event)
+        }
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let time = TimeInterval(event.timestamp) / 1_000_000_000
         switch state.handle(keyCode: keyCode, isDown: type == .keyDown, at: time) {
