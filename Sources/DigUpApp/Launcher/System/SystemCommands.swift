@@ -317,7 +317,7 @@ extension SystemFeature {
 
     /// Asks every app (but Finder, and the one in front if `keepingFrontmost`) to quit, once you've said yes.
     static func quitApps(keepingFrontmost: Bool, _ context: LauncherContext) {
-        let front = keepingFrontmost ? context.previousApp : nil
+        let front = keepingFrontmost ? appInFront(context) : nil
         let apps = regularApps().filter {
             $0.bundleIdentifier != "com.apple.finder" && $0.processIdentifier != front?.processIdentifier
         }
@@ -339,7 +339,7 @@ extension SystemFeature {
     }
 
     static func hideApps(keepingFrontmost: Bool, _ context: LauncherContext) {
-        let keep = keepingFrontmost ? context.previousApp?.processIdentifier : nil
+        let keep = keepingFrontmost ? appInFront(context)?.processIdentifier : nil
         let apps = regularApps().filter { !$0.isHidden && $0.processIdentifier != keep }
         for app in apps { app.hide() }
         if apps.isEmpty {

@@ -47,6 +47,16 @@ enum SystemFeature: LauncherFeature {
         }
     }
 
+    /// The app in front, that "other apps" and window commands mean: the one the panel opened over, or, when a
+    /// hotkey ran the command with the panel closed, the frontmost one.
+    static func appInFront(_ context: LauncherContext) -> NSRunningApplication? {
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            return front
+        }
+        return context.previousApp
+    }
+
     /// Every command, in the order they're listed when several match equally.
     static let commands: [Command] = powerCommands + trashCommands + appearanceCommands + soundCommands
         + mediaCommands + diskCommands + appCommands + desktopCommands + networkCommands + finderCommands
