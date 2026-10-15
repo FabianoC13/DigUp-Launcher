@@ -63,7 +63,7 @@ final class CalculatorModel {
         colorsEnabled = defaults.object(forKey: Keys.colors) as? Bool ?? true
     }
 
-    static var directory: URL { Launcher.directory.appendingPathComponent("Calculator", isDirectory: true) }
+    private static var directory: URL { Launcher.directory.appendingPathComponent("Calculator", isDirectory: true) }
     private static var ratesFile: URL { directory.appendingPathComponent("rates.json") }
     private static var historyFile: URL { directory.appendingPathComponent("history.json") }
 
