@@ -70,37 +70,43 @@ enum AppsFileSearchCommand {
 /// Typed paths: "~/Doc" lists the folders and files in your home folder starting with "Doc"; "~/Documents/" lists
 /// what's in Documents. Hidden files show only when what's typed starts with a dot.
 enum AppsPathBrowser {
-    static let limit = 60
+    nonisolated static let limit = 60
 
     static func items(folder: String, prefix: String, home: String) async -> [LauncherItem] {
-        let listing = await Task.detached(priority: .userInitiated) { () -> (folder: AppsFileHit?, [AppsFileHit])? in
+        // Names are matched first, so only the rows shown are read in full (a Downloads folder can hold thousands).
+        let listing = await Task.detached(priority: .userInitiated) {
+            () -> (folder: AppsFileHit?, matches: [(hit: AppsFileHit, score: Double)])? in
             let url = URL(fileURLWithPath: folder, isDirectory: true)
             let options: FileManager.DirectoryEnumerationOptions = prefix.hasPrefix(".") ? [] : [.skipsHiddenFiles]
             guard let children = try? FileManager.default.contentsOfDirectory(
                 at: url, includingPropertiesForKeys: Array(AppsFileHit.keys), options: options) else { return nil }
-            return (AppsFileHit(path: folder), children.compactMap { AppsFileHit(path: $0.path) })
-        }.value
-        guard !Task.isCancelled, let (folderHit, children) = listing else { return [] }
-        var matches: [(hit: AppsFileHit, score: Double)] = []
-        for child in children {
-            if prefix.isEmpty {
-                matches.append((child, 0.9))
-            } else if let score = FuzzyMatch.score(prefix, child.name), score >= 0.5 {
-                matches.append((child, 0.6 + 0.4 * score))
+            var named: [(url: URL, score: Double)] = []
+            for child in children {
+                if prefix.isEmpty {
+                    named.append((child, 0.9))
+                } else if let score = FuzzyMatch.score(prefix, child.lastPathComponent), score >= 0.5 {
+                    named.append((child, 0.6 + 0.4 * score))
+                }
             }
-        }
-        matches.sort { left, right in
-            if left.score != right.score { return left.score > right.score }
-            return left.hit.name.localizedStandardCompare(right.hit.name) == .orderedAscending
-        }
+            named.sort { left, right in
+                if left.score != right.score { return left.score > right.score }
+                return left.url.lastPathComponent.localizedStandardCompare(right.url.lastPathComponent)
+                    == .orderedAscending
+            }
+            let matches = named.prefix(limit).compactMap { match in
+                AppsFileHit(path: match.url.path).map { (hit: $0, score: match.score) }
+            }
+            return (prefix.isEmpty ? AppsFileHit(path: folder) : nil, matches)
+        }.value
+        guard !Task.isCancelled, let (folderHit, matches) = listing else { return [] }
         // Below the typed folder's own row (in Results).
         let section = LauncherSection.named(AppsFormat.tildePath(folder, home: home), order: 4)
         var items: [LauncherItem] = []
-        if prefix.isEmpty, let folderHit {
+        if let folderHit {
             items.append(folderItem(folderHit, home: home))
         }
         // Scores fall a little down the list so the launcher keeps this order.
-        for (index, match) in matches.prefix(limit).enumerated() {
+        for (index, match) in matches.enumerated() {
             let score = match.score - Double(index) * 0.0005
             items.append(AppsFileItems.item(match.hit, score: score, section: section, browsing: true))
         }

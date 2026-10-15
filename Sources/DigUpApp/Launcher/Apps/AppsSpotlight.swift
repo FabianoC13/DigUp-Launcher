@@ -26,8 +26,9 @@ nonisolated struct AppsFileHit: Sendable {
         modified = item.value(forAttribute: NSMetadataItemFSContentChangeDateKey) as? Date
         lastUsed = item.value(forAttribute: NSMetadataItemLastUsedDateKey) as? Date
         let types = item.value(forAttribute: NSMetadataItemContentTypeTreeKey) as? [String] ?? []
-        isFolder = types.contains("public.folder") || types.contains("public.directory")
+        // An app or a library is a directory too, but Finder shows it as one file.
         isPackage = types.contains("com.apple.package")
+        isFolder = !isPackage && (types.contains("public.folder") || types.contains("public.directory"))
     }
 
     /// What `init(path:)` reads, to prefetch when listing a folder.

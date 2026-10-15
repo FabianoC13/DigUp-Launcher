@@ -35,6 +35,8 @@ final class AppsCatalog {
     private var scanning = false
     private var rescanPending = false
     private var rescanTask: Task<Void, Never>?
+    /// Launched apps a rescan didn't list (a translocated download, a helper): they don't trigger another.
+    private var unlistedLaunches = Set<String>()
     /// The first scan is done.
     private(set) var isReady = false
 
@@ -57,7 +59,8 @@ final class AppsCatalog {
             let path = app?.bundleURL?.path
             let regular = app?.activationPolicy == .regular
             MainActor.assumeIsolated {
-                guard let self, regular, let path, self.byPath[path] == nil else { return }
+                guard let self, regular, let path, self.byPath[path] == nil,
+                      self.unlistedLaunches.insert(path).inserted else { return }
                 self.scheduleRescan(after: .seconds(1))
             }
         })

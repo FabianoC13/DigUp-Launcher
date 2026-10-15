@@ -9,10 +9,12 @@ enum AppsFileItems {
         let url = hit.url
         let home = NSHomeDirectory()
         let folder = (hit.path as NSString).deletingLastPathComponent
-        let defaultApp = NSWorkspace.shared.urlForApplication(toOpen: url)
-        let appName = defaultApp.map { AppsScanner.displayName($0.path) }
+        // An app opens itself.
+        let isApp = url.pathExtension.lowercased() == "app"
+        let appName = isApp ? nil : NSWorkspace.shared.urlForApplication(toOpen: url)
+            .map { AppsScanner.displayName($0.path) }
 
-        let open = LauncherAction(id: "open", title: hit.isFolder ? "Open in Finder"
+        let open = LauncherAction(id: "open", title: hit.isFolder ? "Open in Finder" : isApp ? "Open Application"
             : appName.map { "Open with \($0)" } ?? "Open", symbol: "arrow.up.forward.square") { context in
             if !NSWorkspace.shared.open(url) {
                 AppsFeature.report("Couldn't open \(hit.name).", context: context)
@@ -39,7 +41,7 @@ enum AppsFileItems {
         } else {
             actions = [open, reveal]
         }
-        if !hit.isFolder {
+        if !hit.isFolder, !isApp {
             actions.append(LauncherAction(id: "open-with", title: "Open With…", symbol: "square.grid.2x2",
                                           shortcut: LauncherShortcut("o", [.command, .shift]),
                                           keepsPanelOpen: true) { context in
