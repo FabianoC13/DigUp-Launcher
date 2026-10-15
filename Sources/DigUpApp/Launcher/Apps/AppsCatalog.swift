@@ -182,6 +182,16 @@ nonisolated enum AppsScanner {
         for folder in AppsCatalogRules.standardFolders(home: home) {
             candidates += findApps(in: folder.path, depth: folder.depth).map { ($0, folder.source) }
         }
+        // Safari (and any other system app macOS links into /Applications) is a link flagged hidden there, which the
+        // walk above skips: it's listed under the link's name.
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: "/Applications")) ?? []
+        where name.hasSuffix(".app") && !name.hasPrefix(".") {
+            let path = "/Applications/" + name
+            if (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) != nil,
+               FileManager.default.fileExists(atPath: path) {
+                candidates.append((path, .installed))
+            }
+        }
         for name in AppsCatalogRules.coreServicesApps.sorted() {
             let path = "/System/Library/CoreServices/" + name
             if FileManager.default.fileExists(atPath: path) { candidates.append((path, .system)) }
@@ -256,7 +266,9 @@ nonisolated enum AppsScanner {
                     ? url.resolvingSymlinksInPath() : (try? URL(resolvingAliasFileAt: url)) ?? url
                 if target != url, target.pathExtension.lowercased() == "app",
                    FileManager.default.fileExists(atPath: target.path) {
-                    found.append(target.standardizedFileURL.path)
+                    // Safari in /Applications is a link into the system's cryptex, a place apps are otherwise never
+                    // listed from: it's listed where you'd look for it.
+                    found.append(target.path.hasPrefix("/System/") ? url.path : target.standardizedFileURL.path)
                 }
                 continue
             }

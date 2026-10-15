@@ -177,7 +177,7 @@ struct SearchPanelView: View {
         }
         switch controller.phase {
         case .launcher:
-            let count = controller.items.count
+            let count = controller.items.filter { $0.section != .fallback }.count
             return count == 1 ? "1 result" : "\(count) results"
         case .words:
             return controller.encoder == .starting ? "Matching words; meaning search is warming up…" : "Matching words…"
@@ -194,6 +194,7 @@ struct SearchPanelView: View {
             }
             if !controller.isCode, let caveat = controller.model.resultsCaveat { return caveat }
             let count = controller.results.strongRows.count
+                + controller.items.filter { $0.section != .fallback }.count
             let weaker = controller.results.weaker.count
             return (count == 1 ? "1 result" : "\(count) results") + (controller.isCode ? " in your code" : "")
                 + (weaker > 0 ? " · \(weaker) weaker" : "")
