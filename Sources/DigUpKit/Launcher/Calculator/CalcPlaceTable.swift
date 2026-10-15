@@ -1,0 +1,207 @@
+import Foundation
+
+/// Cities, countries, airports and nicknames → time zone identifiers. Each row's names are separated by ";": a
+/// capitalized name is shown as itself, a lowercase nickname or an airport code (JFK) as the row's first name.
+enum CalcPlaceTable {
+    static let rows: [(String, String)] = [
+        // North America
+        ("America/New_York", "New York;New York City;nyc;ny;manhattan;brooklyn;Boston;Washington;Washington DC;dc;"
+         + "Philadelphia;Miami;Atlanta;Detroit;Toronto;Montreal;Ottawa;Quebec;Pittsburgh;Baltimore;Charlotte;"
+         + "Orlando;Tampa;Cleveland;Columbus;Indianapolis;Raleigh;Richmond;Buffalo;Nassau;Havana;Cuba;Bahamas;"
+         + "JFK;LGA;EWR;BOS;IAD;DCA;MIA;ATL;DTW;YYZ;YUL;PHL;eastern time;et"),
+        ("America/Chicago", "Chicago;Houston;Dallas;Austin;San Antonio;New Orleans;Minneapolis;St Louis;Saint Louis;"
+         + "Kansas City;Nashville;Memphis;Milwaukee;Oklahoma City;Winnipeg;ORD;MDW;IAH;DFW;AUS;MSP;central time;ct"),
+        ("America/Denver", "Denver;Salt Lake City;Albuquerque;Boise;Calgary;Edmonton;El Paso;DEN;SLC;YYC;"
+         + "mountain time;mt"),
+        ("America/Phoenix", "Phoenix;Arizona;Tucson;PHX"),
+        ("America/Los_Angeles", "Los Angeles;la;San Francisco;sf;san fran;Seattle;San Diego;San Jose;Portland;"
+         + "Las Vegas;Vegas;Sacramento;Oakland;Vancouver;Silicon Valley;Palo Alto;Cupertino;Mountain View;"
+         + "Hollywood;California;LAX;SFO;SEA;SAN;SJC;PDX;LAS;YVR;pacific time;pt"),
+        ("America/Anchorage", "Anchorage;Alaska;ANC"),
+        ("Pacific/Honolulu", "Honolulu;Hawaii;Maui;HNL"),
+        ("America/Halifax", "Halifax;Nova Scotia;Bermuda;atlantic time"),
+        ("America/St_Johns", "St John's;St Johns;Newfoundland"),
+        ("America/Regina", "Regina;Saskatchewan"),
+        ("America/Mexico_City", "Mexico City;Mexico;cdmx;Guadalajara;Monterrey;Puebla;MEX"),
+        ("America/Cancun", "Cancun;Cancún;CUN"),
+        ("America/Tijuana", "Tijuana"),
+        ("America/Guatemala", "Guatemala City;Guatemala"),
+        ("America/El_Salvador", "San Salvador;El Salvador"),
+        ("America/Tegucigalpa", "Tegucigalpa;Honduras"),
+        ("America/Managua", "Managua;Nicaragua"),
+        ("America/Costa_Rica", "San José;Costa Rica"),
+        ("America/Panama", "Panama City;Panama;PTY"),
+        ("America/Jamaica", "Kingston;Jamaica"),
+        ("America/Santo_Domingo", "Santo Domingo;Dominican Republic;Punta Cana"),
+        ("America/Puerto_Rico", "San Juan;Puerto Rico"),
+        ("America/Port-au-Prince", "Port-au-Prince;Haiti"),
+        // South America
+        ("America/Sao_Paulo", "São Paulo;Sao Paulo;sp;sampa;Rio de Janeiro;Rio;Brasília;Brasilia;Belo Horizonte;"
+         + "Curitiba;Porto Alegre;Salvador;Recife;Fortaleza;Campinas;Florianópolis;Florianopolis;Brazil;Brasil;"
+         + "GRU;GIG;BSB;CGH;brasilia time"),
+        ("America/Manaus", "Manaus;Amazonas"),
+        ("America/Buenos_Aires", "Buenos Aires;Argentina;Córdoba;Cordoba;Rosario;Mendoza;EZE"),
+        ("America/Santiago", "Santiago;Chile;Valparaíso;SCL"),
+        ("America/Lima", "Lima;Peru;Cusco;LIM"),
+        ("America/Bogota", "Bogotá;Bogota;Colombia;Medellín;Medellin;Cali;Cartagena;BOG"),
+        ("America/Caracas", "Caracas;Venezuela"),
+        ("America/Guayaquil", "Quito;Guayaquil;Ecuador"),
+        ("America/La_Paz", "La Paz;Bolivia;Sucre;Santa Cruz"),
+        ("America/Asuncion", "Asunción;Asuncion;Paraguay"),
+        ("America/Montevideo", "Montevideo;Uruguay"),
+        ("America/Guyana", "Georgetown;Guyana"),
+        ("America/Paramaribo", "Paramaribo;Suriname"),
+        // Europe
+        ("Europe/London", "London;ldn;Manchester;Birmingham;Liverpool;Leeds;Glasgow;Edinburgh;Bristol;Cardiff;"
+         + "Belfast;United Kingdom;uk;England;Britain;Great Britain;Scotland;Wales;LHR;LGW;STN;LCY;MAN"),
+        ("Europe/Dublin", "Dublin;Ireland;Cork;DUB"),
+        ("Europe/Lisbon", "Lisbon;Lisboa;Porto;Portugal;Madeira;LIS;OPO"),
+        ("Atlantic/Reykjavik", "Reykjavík;Reykjavik;Iceland;KEF"),
+        ("Atlantic/Canary", "Canary Islands;Tenerife;Las Palmas;Gran Canaria"),
+        ("Atlantic/Azores", "Azores;Ponta Delgada"),
+        ("Europe/Paris", "Paris;France;Lyon;Marseille;Nice;Toulouse;Bordeaux;Lille;Strasbourg;CDG;ORY"),
+        ("Europe/Madrid", "Madrid;Spain;España;Barcelona;Valencia;Seville;Sevilla;Málaga;Malaga;Bilbao;Ibiza;Mallorca;"
+         + "MAD;BCN"),
+        ("Europe/Berlin", "Berlin;Germany;Deutschland;Munich;München;Hamburg;Frankfurt;Cologne;Köln;Stuttgart;"
+         + "Düsseldorf;Dusseldorf;Leipzig;Dresden;Hanover;Nuremberg;BER;MUC;FRA;HAM"),
+        ("Europe/Amsterdam", "Amsterdam;Netherlands;Holland;Rotterdam;The Hague;Den Haag;Utrecht;Eindhoven;AMS"),
+        ("Europe/Brussels", "Brussels;Belgium;Antwerp;Ghent;Bruges;BRU"),
+        ("Europe/Luxembourg", "Luxembourg"),
+        ("Europe/Zurich", "Zurich;Zürich;Switzerland;Geneva;Genève;Bern;Basel;Lausanne;ZRH;GVA"),
+        ("Europe/Vienna", "Vienna;Wien;Austria;Salzburg;Innsbruck;VIE"),
+        ("Europe/Rome", "Rome;Roma;Italy;Italia;Milan;Milano;Naples;Napoli;Turin;Torino;Florence;Firenze;Venice;"
+         + "Venezia;Bologna;Palermo;Genoa;FCO;MXP;LIN"),
+        ("Europe/Vatican", "Vatican;Vatican City"),
+        ("Europe/Monaco", "Monaco;Monte Carlo"),
+        ("Europe/Malta", "Valletta;Malta"),
+        ("Europe/Prague", "Prague;Praha;Czech Republic;Czechia;Brno;PRG"),
+        ("Europe/Bratislava", "Bratislava;Slovakia"),
+        ("Europe/Budapest", "Budapest;Hungary;BUD"),
+        ("Europe/Warsaw", "Warsaw;Warszawa;Poland;Kraków;Krakow;Gdańsk;Gdansk;Wrocław;Wroclaw;Poznań;WAW"),
+        ("Europe/Copenhagen", "Copenhagen;København;Denmark;Aarhus;CPH"),
+        ("Europe/Oslo", "Oslo;Norway;Bergen;OSL"),
+        ("Europe/Stockholm", "Stockholm;Sweden;Gothenburg;Göteborg;Malmö;Malmo;ARN"),
+        ("Europe/Helsinki", "Helsinki;Finland;Espoo;Tampere;HEL"),
+        ("Europe/Tallinn", "Tallinn;Estonia"),
+        ("Europe/Riga", "Riga;Latvia"),
+        ("Europe/Vilnius", "Vilnius;Lithuania"),
+        ("Europe/Ljubljana", "Ljubljana;Slovenia"),
+        ("Europe/Zagreb", "Zagreb;Croatia;Split;Dubrovnik"),
+        ("Europe/Belgrade", "Belgrade;Beograd;Serbia"),
+        ("Europe/Sarajevo", "Sarajevo;Bosnia"),
+        ("Europe/Podgorica", "Podgorica;Montenegro"),
+        ("Europe/Skopje", "Skopje;North Macedonia;Macedonia"),
+        ("Europe/Tirane", "Tirana;Albania"),
+        ("Europe/Athens", "Athens;Greece;Thessaloniki;Crete;Santorini;ATH"),
+        ("Europe/Sofia", "Sofia;Bulgaria"),
+        ("Europe/Bucharest", "Bucharest;București;Romania;Cluj;OTP"),
+        ("Europe/Chisinau", "Chișinău;Chisinau;Moldova"),
+        ("Europe/Kyiv", "Kyiv;Kiev;Ukraine;Lviv;Odesa;Odessa;Kharkiv"),
+        ("Europe/Minsk", "Minsk;Belarus"),
+        ("Europe/Moscow", "Moscow;Moskva;Russia;Saint Petersburg;St Petersburg;Kazan;SVO;DME"),
+        ("Europe/Istanbul", "Istanbul;Turkey;Türkiye;Ankara;Izmir;Antalya;SAW"),
+        ("Asia/Nicosia", "Nicosia;Cyprus;Limassol"),
+        ("Europe/Andorra", "Andorra"),
+        ("Europe/San_Marino", "San Marino"),
+        ("Europe/Vaduz", "Vaduz;Liechtenstein"),
+        // Middle East and Caucasus
+        ("Asia/Jerusalem", "Jerusalem;Israel;Tel Aviv;Haifa;TLV"),
+        ("Asia/Gaza", "Gaza;Palestine;Ramallah"),
+        ("Asia/Beirut", "Beirut;Lebanon"),
+        ("Asia/Damascus", "Damascus;Syria"),
+        ("Asia/Amman", "Amman;Jordan"),
+        ("Asia/Baghdad", "Baghdad;Iraq"),
+        ("Asia/Riyadh", "Riyadh;Saudi Arabia;Jeddah;Mecca;Medina;Kuwait City;Kuwait;Aden;Yemen;Sanaa;RUH;JED"),
+        ("Asia/Qatar", "Doha;Qatar;Bahrain;Manama;DOH"),
+        ("Asia/Dubai", "Dubai;Abu Dhabi;United Arab Emirates;uae;Sharjah;Muscat;Oman;DXB;AUH"),
+        ("Asia/Tehran", "Tehran;Iran;Isfahan;Shiraz"),
+        ("Asia/Baku", "Baku;Azerbaijan"),
+        ("Asia/Tbilisi", "Tbilisi"),
+        ("Asia/Yerevan", "Yerevan;Armenia"),
+        // Africa
+        ("Africa/Cairo", "Cairo;Egypt;Alexandria;Giza;CAI"),
+        ("Africa/Casablanca", "Casablanca;Morocco;Rabat;Marrakesh;Marrakech;Fez;Tangier"),
+        ("Africa/Algiers", "Algiers;Algeria"),
+        ("Africa/Tunis", "Tunis;Tunisia"),
+        ("Africa/Tripoli", "Tripoli;Libya"),
+        ("Africa/Khartoum", "Khartoum;Sudan"),
+        ("Africa/Lagos", "Lagos;Nigeria;Abuja;Kinshasa;Luanda;Angola;Douala;Yaoundé;Yaounde;Cameroon;Niamey;Niger;"
+         + "Libreville;Gabon;Brazzaville;Congo;Bangui;Malabo;Porto-Novo;Benin;N'Djamena;Chad;LOS"),
+        ("Africa/Accra", "Accra;Ghana;Abidjan;Ivory Coast;Côte d'Ivoire;Dakar;Senegal;Bamako;Mali;Ouagadougou;"
+         + "Burkina Faso;Conakry;Guinea;Freetown;Sierra Leone;Monrovia;Liberia;Lomé;Lome;Togo;Banjul;Gambia;"
+         + "Nouakchott;Mauritania;Bissau"),
+        ("Africa/Nairobi", "Nairobi;Kenya;Addis Ababa;Ethiopia;Dar es Salaam;Dodoma;Tanzania;Kampala;Uganda;"
+         + "Mogadishu;Somalia;Djibouti;Asmara;Eritrea;Mombasa;Zanzibar;Antananarivo;Madagascar;NBO"),
+        ("Africa/Johannesburg", "Johannesburg;Joburg;Jozi;South Africa;Cape Town;Pretoria;Durban;Maseru;Lesotho;"
+         + "Mbabane;Eswatini;JNB;CPT"),
+        ("Africa/Maputo", "Maputo;Mozambique;Harare;Zimbabwe;Lusaka;Zambia;Lilongwe;Malawi;Gaborone;Botswana;"
+         + "Kigali;Rwanda;Bujumbura;Burundi;Lubumbashi;Windhoek;Namibia"),
+        ("Indian/Mauritius", "Port Louis;Mauritius"),
+        ("Indian/Reunion", "Réunion;Reunion;Saint-Denis"),
+        ("Atlantic/Cape_Verde", "Praia;Cape Verde"),
+        // Asia
+        ("Asia/Karachi", "Karachi;Pakistan;Islamabad;Lahore;Rawalpindi;Faisalabad;KHI"),
+        ("Asia/Kabul", "Kabul;Afghanistan"),
+        ("Asia/Tashkent", "Tashkent;Uzbekistan;Samarkand;Dushanbe;Tajikistan;Ashgabat;Turkmenistan"),
+        ("Asia/Almaty", "Almaty;Astana;Kazakhstan;Bishkek;Kyrgyzstan"),
+        ("Asia/Kolkata", "Kolkata;Calcutta;Mumbai;Bombay;Delhi;New Delhi;Bangalore;Bengaluru;Chennai;Madras;"
+         + "Hyderabad;Pune;Ahmedabad;Jaipur;Goa;Kochi;India;BOM;DEL;BLR;MAA;india time"),
+        ("Asia/Colombo", "Colombo;Sri Lanka"),
+        ("Asia/Kathmandu", "Kathmandu;Nepal"),
+        ("Asia/Thimphu", "Thimphu;Bhutan"),
+        ("Asia/Dhaka", "Dhaka;Bangladesh;Chittagong"),
+        ("Indian/Maldives", "Malé;Male;Maldives"),
+        ("Asia/Yangon", "Yangon;Rangoon;Myanmar;Naypyidaw"),
+        ("Asia/Bangkok", "Bangkok;Thailand;Phuket;Chiang Mai;Pattaya;Vientiane;Laos;Phnom Penh;Cambodia;BKK"),
+        ("Asia/Ho_Chi_Minh", "Ho Chi Minh City;Saigon;Hanoi;Vietnam;Da Nang;SGN;HAN"),
+        ("Asia/Jakarta", "Jakarta;Indonesia;Bandung;Surabaya;Yogyakarta;CGK"),
+        ("Asia/Makassar", "Bali;Denpasar;Makassar;DPS"),
+        ("Asia/Kuala_Lumpur", "Kuala Lumpur;kl;Malaysia;Penang;KUL"),
+        ("Asia/Singapore", "Singapore;SIN"),
+        ("Asia/Brunei", "Bandar Seri Begawan;Brunei"),
+        ("Asia/Manila", "Manila;Philippines;Cebu;Quezon City;Davao;MNL"),
+        ("Asia/Shanghai", "Shanghai;Beijing;Peking;China;Shenzhen;Guangzhou;Chengdu;Chongqing;Hangzhou;Wuhan;Xi'an;"
+         + "Xian;Nanjing;Tianjin;Suzhou;PVG;PEK;PKX;CAN;SZX"),
+        ("Asia/Hong_Kong", "Hong Kong;hk;HKG"),
+        ("Asia/Macau", "Macau;Macao"),
+        ("Asia/Taipei", "Taipei;Taiwan;Kaohsiung;TPE"),
+        ("Asia/Seoul", "Seoul;South Korea;Korea;Busan;Incheon;ICN;GMP"),
+        ("Asia/Pyongyang", "Pyongyang;North Korea"),
+        ("Asia/Tokyo", "Tokyo;Japan;Osaka;Kyoto;Yokohama;Nagoya;Sapporo;Fukuoka;Kobe;Hiroshima;Okinawa;NRT;HND;KIX"),
+        ("Asia/Ulaanbaatar", "Ulaanbaatar;Ulan Bator;Mongolia"),
+        ("Asia/Vladivostok", "Vladivostok"),
+        ("Asia/Yekaterinburg", "Yekaterinburg"),
+        ("Asia/Novosibirsk", "Novosibirsk"),
+        ("Asia/Dili", "Dili;East Timor;Timor-Leste"),
+        // Oceania
+        ("Australia/Sydney", "Sydney;Canberra;New South Wales;nsw;SYD;CBR"),
+        ("Australia/Melbourne", "Melbourne;Victoria;MEL"),
+        ("Australia/Brisbane", "Brisbane;Queensland;Gold Coast;Cairns;BNE"),
+        ("Australia/Adelaide", "Adelaide;South Australia;ADL"),
+        ("Australia/Darwin", "Darwin;Northern Territory"),
+        ("Australia/Perth", "Perth;Western Australia;PER"),
+        ("Australia/Hobart", "Hobart;Tasmania"),
+        ("Pacific/Auckland", "Auckland;New Zealand;nz;Wellington;Christchurch;Queenstown;AKL"),
+        ("Pacific/Fiji", "Suva;Fiji"),
+        ("Pacific/Port_Moresby", "Port Moresby;Papua New Guinea"),
+        ("Pacific/Guam", "Guam;Hagåtña"),
+        ("Pacific/Tahiti", "Tahiti;Papeete"),
+        ("Pacific/Apia", "Apia;Samoa"),
+        ("Pacific/Tongatapu", "Nukuʻalofa;Tonga"),
+        ("Pacific/Noumea", "Nouméa;Noumea;New Caledonia"),
+        ("Pacific/Kiritimati", "Kiritimati"),
+    ]
+
+    /// Zone abbreviations: fixed offsets for the explicit ones ("EST" is always UTC−5), zones for generic ones.
+    static let abbreviations: [String: Int] = [
+        "utc": 0, "gmt": 0, "z": 0, "zulu": 0, "wet": 0, "west": 3600, "bst": 3600, "ist": 19800,
+        "cet": 3600, "cest": 7200, "met": 3600, "mest": 7200, "eet": 7200, "eest": 10800, "msk": 10800,
+        "est": -18000, "edt": -14400, "cst": -21600, "cdt": -18000, "mst": -25200, "mdt": -21600,
+        "pst": -28800, "pdt": -25200, "akst": -32400, "akdt": -28800, "hst": -36000, "ast": -14400, "adt": -10800,
+        "nst": -12600, "ndt": -9000, "brt": -10800, "art": -10800, "clt": -14400, "pet": -18000, "cot": -18000,
+        "jst": 32400, "kst": 32400, "hkt": 28800, "sgt": 28800, "pht": 28800, "awst": 28800, "wib": 25200,
+        "ict": 25200, "pkt": 18000, "npt": 20700, "gst": 14400, "irst": 12600, "aest": 36000, "aedt": 39600,
+        "acst": 34200, "acdt": 37800, "nzst": 43200, "nzdt": 46800, "sast": 7200, "cat": 7200, "eat": 10800,
+        "wat": 3600,
+    ]
+}
