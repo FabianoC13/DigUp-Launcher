@@ -58,6 +58,8 @@ final class SearchPanelController {
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var mouseMonitor: Any?
     @ObservationIgnored private var resignObserver: NSObjectProtocol?
+    /// The glass behind the content (hidden when a look has no blur).
+    @ObservationIgnored private var backdrop: NSView?
     @ObservationIgnored private var keyWindowObserver: NSObjectProtocol?
     @ObservationIgnored private var shownAt = Date.distantPast
     /// Fading out: still on screen, but gone as far as everything else is concerned.
@@ -159,7 +161,7 @@ final class SearchPanelController {
         window.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Self.fadeIn
-            window.animator().alphaValue = 1
+            window.animator().alphaValue = PanelAppearance.shared.look.opacity
         }
         if let field {
             window.makeFirstResponder(field)
@@ -460,7 +462,8 @@ final class SearchPanelController {
         resignObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hide() }
+            // While the stealth tuning page is open, the panel stays up over the browser.
+            MainActor.assumeIsolated { if !PanelAppearance.shared.tuning { self?.hide() } }
         }
         // Another of the app's windows came forward (⌘, or ⌘N while the panel was up): the panel steps away, like
         // Spotlight, rather than float over it and take its keys.
@@ -719,9 +722,21 @@ final class SearchPanelController {
         let window = SearchPanelWindow()
         let hosting = NSHostingView(rootView: SearchPanelView(controller: self))
         hosting.sizingOptions = []
-        window.contentView = Self.background(containing: hosting)
+        let container = Self.background(containing: hosting)
+        window.contentView = container
+        backdrop = container.subviews.first
         self.window = window
+        PanelAppearance.shared.onChange.append { [weak self] in self?.applyAppearance() }
+        applyAppearance()
         return window
+    }
+
+    /// Normal or Stealth (or a look being tuned): the window's alpha and the blur. The tint is the view's.
+    func applyAppearance() {
+        let look = PanelAppearance.shared.look
+        backdrop?.isHidden = !look.blur
+        guard let window, window.isVisible, !fading else { return }
+        window.alphaValue = look.opacity
     }
 
     private var desiredHeight: CGFloat {

@@ -28,7 +28,7 @@ struct SearchPanelView: View {
         .frame(width: SearchPanelController.width)
         .frame(maxHeight: .infinity, alignment: .top)
         // Glass alone is too see-through over busy backgrounds.
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.75))
+        .background(Color(nsColor: .windowBackgroundColor).opacity(PanelAppearance.shared.look.tint))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 

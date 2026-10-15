@@ -15,5 +15,6 @@ enum LauncherFeatures {
         NotesFeature.self,         // Notes/: floating notes
         FocusFeature.self,         // Focus/: distraction blocking
         ScriptsFeature.self,       // Scripts/: script commands
+        StealthFeature.self,       // Stealth/: Normal and Stealth looks for the panel, tuned on a localhost page
     ]
 }
