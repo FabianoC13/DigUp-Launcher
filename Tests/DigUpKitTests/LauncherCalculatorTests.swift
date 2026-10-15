@@ -479,3 +479,13 @@ private enum World {
         #expect(try JSONDecoder().decode(CalcHistory.self, from: data) == history)
     }
 }
+
+@Suite struct LauncherCalculatorWorkTimeTests {
+    @Test(arguments: [
+        ("workdays this month", "22 workdays"), ("workdays in this month", "22 workdays"),
+        ("business days in march 2027", "23 workdays"), ("work hours next year", "2,088 hours"),
+    ])
+    func periods(_ question: String, _ expected: String) {
+        #expect(World.ask(question) == expected, "\(question)")
+    }
+}

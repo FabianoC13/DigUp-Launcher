@@ -154,9 +154,7 @@ public enum CalcDates {
             var rest: String?
             for form in hourForms + dayForms {
                 if let found = CalcText.dropPrefix(form, from: text) {
-                    rest = CalcText.dropAnyPrefix(["in", "this", "for"], from: found).map {
-                        found.hasPrefix("this") ? "this \($0)" : $0
-                    } ?? found
+                    rest = CalcText.dropAnyPrefix(["in", "for"], from: found) ?? found
                     hours = hourForms.contains(form)
                     break
                 }

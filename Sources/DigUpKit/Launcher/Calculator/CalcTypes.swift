@@ -163,17 +163,17 @@ enum CalcText {
     /// place from the right until `accept` takes one.
     static func splitLast<T>(_ text: String, separators: [String],
                              accept: (_ left: String, _ right: String) -> T?) -> T? {
-        var places: [(Range<String.Index>, Int)] = []
+        var places: [Range<String.Index>] = []
         for separator in separators {
             let needle = " \(separator) "
             var searchRange = text.startIndex..<text.endIndex
             while let found = text.range(of: needle, range: searchRange) {
-                places.append((found, needle.count))
+                places.append(found)
                 searchRange = text.index(after: found.lowerBound)..<text.endIndex
             }
         }
-        places.sort { $0.0.lowerBound > $1.0.lowerBound }
-        for (range, _) in places {
+        places.sort { $0.lowerBound > $1.lowerBound }
+        for range in places {
             let left = String(text[..<range.lowerBound])
             let right = String(text[range.upperBound...])
             guard !left.isEmpty, !right.isEmpty else { continue }

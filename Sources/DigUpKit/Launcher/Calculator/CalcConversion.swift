@@ -10,7 +10,7 @@ public enum CalcConversion {
         case timespan, workdays, workweeks, feetInches, poundsOunces
     }
 
-    static let separators = ["in", "to", "into", "as", "=", "->", "→", "in to"]
+    static let separators = ["in", "to", "into", "as", "=", "->", "→"]
 
     public static func answer(_ input: String, env: CalcEnvironment) -> CalcAnswer? {
         var text = CalcText.clean(input, lowercased: false)
