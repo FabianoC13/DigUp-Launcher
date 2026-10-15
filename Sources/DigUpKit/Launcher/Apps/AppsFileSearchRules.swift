@@ -7,8 +7,8 @@ public enum AppsFileSearchRules {
     public static let minimumQueryLength = 2
 
     /// Hits that aren't your files: ~/Library (except iCloud Drive and cloud storage folders), hidden files and
-    /// folders, caches, dependency and build folders, anything inside a bundle (an app's resources, a library's
-    /// photos).
+    /// folders, caches, dependency folders (node_modules, Python environments, Pods), anything inside a bundle (an
+    /// app's resources, a library's photos).
     public static func isExcluded(_ path: String, home: String) -> Bool {
         let library = home + "/Library/"
         if path.hasPrefix(library) {
@@ -28,7 +28,8 @@ public enum AppsFileSearchRules {
     }
 
     static let excludedFolders: Set<String> = [
-        "node_modules", "Caches", "DerivedData", "__pycache__", "bower_components", ".build", "Pods",
+        "node_modules", "Caches", "DerivedData", "__pycache__", "bower_components", "Pods", "Carthage",
+        "site-packages", "venv",
     ]
 
     /// Folders that are documents or bundles in Finder: what's inside them isn't a result of its own.
@@ -38,17 +39,36 @@ public enum AppsFileSearchRules {
         "playground", "rtfd", "pages", "numbers", "key", "sparsebundle", "dsym", "lproj", "scptd", "docarchive",
     ]
 
-    /// The words of the query, each as a Spotlight LIKE pattern that finds it anywhere in a name ("*budget*"), with
-    /// Spotlight's wildcards in what you typed taken literally.
-    public static func likePatterns(for query: String) -> [String] {
-        query.split(whereSeparator: \.isWhitespace).map { word in
-            var escaped = ""
-            for character in word {
-                if character == "*" || character == "?" || character == "\\" { escaped.append("\\") }
-                escaped.append(character)
-            }
-            return "*" + escaped + "*"
+    /// The Spotlight query (MDQuery syntax, for `NSPredicate(fromMetadataQueryString:)`) for files whose names have
+    /// every typed word: a word of three or more letters anywhere in the name ("*budget*"), a shorter one at the start
+    /// of one of the name's words ("re*", word-based: "Q3 report" but not "Firefox"). With fewer than three letters
+    /// typed in all, only files opened in the last `recentDays` days: two letters match too much else. Spotlight's
+    /// wildcards and quotes in what's typed are taken literally. Nil when nothing's typed.
+    public static func spotlightQuery(for query: String, recentDays: Int = 90) -> String? {
+        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return nil }
+        var parts = words.map { word in
+            word.count < 3
+                ? #"kMDItemFSName == "\#(escaped(word))*"cdw"#
+                : #"kMDItemFSName == "*\#(escaped(word))*"cd"#
         }
+        if words.joined().count < 3 { parts.append(recentlyUsed(days: recentDays)) }
+        return parts.map { "(" + $0 + ")" }.joined(separator: " && ")
+    }
+
+    /// The Spotlight query for files opened in the last `days` days.
+    public static func recentlyUsed(days: Int) -> String {
+        "kMDItemLastUsedDate >= $time.today(-\(days))"
+    }
+
+    /// A word for a quoted Spotlight string: quotes, backslashes and wildcards escaped.
+    static func escaped(_ word: String) -> String {
+        var escaped = ""
+        for character in word {
+            if "\"\\*?".contains(character) { escaped.append("\\") }
+            escaped.append(character)
+        }
+        return escaped
     }
 
     /// 0…1: how lately the file was opened (or, never opened, changed). Halves every `halfLifeDays`; a change counts

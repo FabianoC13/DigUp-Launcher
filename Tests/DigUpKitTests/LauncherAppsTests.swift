@@ -107,6 +107,8 @@ import Testing
         #expect(AppsFileSearchRules.isExcluded("/Users/me/Library/Preferences/x.plist", home: home))
         #expect(AppsFileSearchRules.isExcluded("/Users/me/.config/x.json", home: home))
         #expect(AppsFileSearchRules.isExcluded("/Users/me/code/app/node_modules/x/readme.md", home: home))
+        #expect(AppsFileSearchRules.isExcluded("/Users/me/p/venv/lib/python3.9/site-packages/botocore/budgets",
+                                               home: home))
         #expect(AppsFileSearchRules.isExcluded("/Users/me/code/a/build.noindex/x.o", home: home))
         #expect(AppsFileSearchRules.isExcluded("/Users/me/Pictures/Photos Library.photoslibrary/x.jpg", home: home))
         #expect(AppsFileSearchRules.isExcluded("/Applications/Foo.app/Contents/Info.plist", home: home))
@@ -114,9 +116,15 @@ import Testing
         #expect(!AppsFileSearchRules.isExcluded("/Users/me/Documents/Talk.key", home: home))
     }
 
-    @Test func likePatternsOnePerWordWithWildcardsLiteral() {
-        #expect(AppsFileSearchRules.likePatterns(for: "tax  2024") == ["*tax*", "*2024*"])
-        #expect(AppsFileSearchRules.likePatterns(for: "a*b?") == [#"*a\*b\?*"#])
+    @Test func spotlightQueriesPerWord() {
+        #expect(AppsFileSearchRules.spotlightQuery(for: "tax  2024")
+            == #"(kMDItemFSName == "*tax*"cd) && (kMDItemFSName == "*2024*"cd)"#)
+        #expect(AppsFileSearchRules.spotlightQuery(for: "q3 report")
+            == #"(kMDItemFSName == "q3*"cdw) && (kMDItemFSName == "*report*"cd)"#)
+        #expect(AppsFileSearchRules.spotlightQuery(for: "re", recentDays: 30)
+            == #"(kMDItemFSName == "re*"cdw) && (kMDItemLastUsedDate >= $time.today(-30))"#)
+        #expect(AppsFileSearchRules.spotlightQuery(for: #"a*"b"#) == #"(kMDItemFSName == "*a\*\"b*"cd)"#)
+        #expect(AppsFileSearchRules.spotlightQuery(for: "  ") == nil)
     }
 
     @Test func recencyFavorsOpeningOverChanging() {
