@@ -396,12 +396,14 @@ import Testing
         let empty = try JSONDecoder().decode(QuicklinksSettings.self, from: Data("{}".utf8))
         #expect(empty == QuicklinksSettings())
         #expect(!empty.hyperKeyEnabled && empty.hyperIncludesShift && empty.hyperQuickPress == .nothing)
+        #expect(!empty.hyperMappingApplied)
         let odd = try JSONDecoder().decode(QuicklinksSettings.self,
                                            from: Data(#"{"hyperQuickPress":"capslock","hyperKeyEnabled":true}"#.utf8))
         #expect(odd.hyperQuickPress == .nothing && odd.hyperKeyEnabled)
         var settings = QuicklinksSettings()
         settings.previousCapsLock = QuicklinksHyperKeyMapping.capsLock
         settings.trustedDeeplinks = ["app:x"]
+        settings.hyperMappingApplied = true
         settings.fallbacks = [QuicklinksFallbackEntry(id: "ai", enabled: false)]
         #expect(try JSONDecoder().decode(QuicklinksSettings.self, from: JSONEncoder().encode(settings)) == settings)
     }

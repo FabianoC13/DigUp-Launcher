@@ -69,7 +69,10 @@ final class QuicklinksHyperKey {
         permissionTimer?.invalidate()
         permissionTimer = nil
         guard installTap() else {
-            store.hyperKeyStatus = .failed("macOS didn't let DigUp watch the keyboard")
+            // Some macOS versions want Input Monitoring for a keyboard tap as well.
+            if !CGPreflightListenEventAccess() { CGRequestListenEventAccess() }
+            store.hyperKeyStatus = .failed("macOS didn't let DigUp watch the keyboard: allow DigUp in Privacy & "
+                                           + "Security → Input Monitoring, then turn the Hyper Key off and on")
             return
         }
         Task {

@@ -9,22 +9,46 @@ final class QuicklinksDeeplinks: NSObject {
 
     private weak var launcher: Launcher?
     private var store: QuicklinksStore?
+    private var installed = false
+    /// Links that came before the launcher started (the one DigUp was launched to open).
+    private var waiting: [URL] = []
 
     private override init() {}
 
-    func start(launcher: Launcher, store: QuicklinksStore) {
-        self.launcher = launcher
-        self.store = store
+    /// Takes "Get URL" Apple events from now on. `start` does it too, but a link that launches DigUp arrives before
+    /// the launcher starts, so the app delegate can call this from `applicationWillFinishLaunching`; links are kept
+    /// until `start`.
+    func install() {
+        guard !installed else { return }
+        installed = true
         // Nothing else in DigUp takes URLs (no application(_:open:)), so this handler is the one for "Get URL".
         NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleGetURL(_:reply:)),
                                                      forEventClass: AEEventClass(kInternetEventClass),
                                                      andEventID: AEEventID(kAEGetURL))
     }
 
+    func start(launcher: Launcher, store: QuicklinksStore) {
+        self.launcher = launcher
+        self.store = store
+        install()
+        let early = waiting
+        waiting = []
+        guard !early.isEmpty else { return }
+        Task {
+            // Let the panel finish setting up first.
+            try? await Task.sleep(for: .milliseconds(300))
+            for url in early { await open(url) }
+        }
+    }
+
     @objc private func handleGetURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         guard let text = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
               let url = URL(string: text) else {
             log("deeplink: an Apple event without a URL")
+            return
+        }
+        guard launcher != nil else {
+            waiting.append(url)
             return
         }
         Task { await open(url) }
