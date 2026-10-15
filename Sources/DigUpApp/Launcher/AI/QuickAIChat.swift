@@ -27,6 +27,9 @@ final class QuickAITurn: Identifiable {
     let shown: String?
     /// The text an AI command rewrote, for showing what changed.
     let original: String?
+    /// A line above the question: "Fix Spelling and Grammar · selected in Notes", "About 412 characters selected in
+    /// Safari".
+    let label: String?
     var answer = ""
     var reasoning = ""
     var model: String
@@ -40,11 +43,12 @@ final class QuickAITurn: Identifiable {
     /// Show the rewrite as its changes to the original.
     var showsChanges = false
 
-    init(question: String, shown: String? = nil, original: String? = nil, model: String, phase: Phase = .readingKey,
-         date: Date = Date()) {
+    init(question: String, shown: String? = nil, original: String? = nil, label: String? = nil, model: String,
+         phase: Phase = .readingKey, date: Date = Date()) {
         self.question = question
         self.shown = shown
         self.original = original
+        self.label = label
         self.model = model
         self.phase = phase
         self.date = date
@@ -81,6 +85,8 @@ final class QuickAIChat {
     private(set) var command: AICommand?
     /// Where the command's text came from ("the selected text", "the clipboard").
     private(set) var source: String?
+    /// Text the next question is about (Ask AI About Selected Text), and where it came from ("selected in Safari").
+    private(set) var attachment: (text: String, source: String)?
     /// A word for the empty chat: what's happening before the first question ("Reading the selected text…"), or why
     /// there is none ("Select some text first…").
     var notice: String?
@@ -126,12 +132,21 @@ final class QuickAIChat {
     // MARK: Asking
 
     /// Sends a question (a follow-up when the chat has turns).
-    func ask(_ question: String, shown: String? = nil, original: String? = nil) {
-        let text = question.trimmingCharacters(in: .whitespacesAndNewlines)
+    func ask(_ question: String, shown: String? = nil, original: String? = nil, label: String? = nil) {
+        var text = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         if isBusy { stop() }
         notice = nil
-        let turn = QuickAITurn(question: text, shown: shown, original: original, model: model)
+        var shown = shown
+        var label = label
+        if let attachment, shown == nil {
+            // The first question goes with the text it's about; follow-ups have it in the history.
+            shown = text
+            label = "About \(attachment.text.count.formatted()) characters \(attachment.source)"
+            text = AIConversation.question(text, about: attachment.text)
+            self.attachment = nil
+        }
+        let turn = QuickAITurn(question: text, shown: shown, original: original, label: label, model: model)
         turns.append(turn)
         lastActivity = Date()
         tick += 1
@@ -178,6 +193,11 @@ final class QuickAIChat {
         lastActivity = Date()
     }
 
+    /// The next question will be about `text` ("selected in Safari" is `source`).
+    func attach(_ text: String, source: String) {
+        attachment = (text, source)
+    }
+
     /// A fresh chat (⌘N, an AI command); the current one stays in the history.
     func startNew(command: AICommand? = nil, source: String? = nil) {
         reset(saving: true, command: command, source: source)
@@ -195,6 +215,7 @@ final class QuickAIChat {
         task = nil
         pending = nil
         if saving { save() }
+        attachment = nil
         id = UUID()
         turns = []
         self.command = command
@@ -207,10 +228,10 @@ final class QuickAIChat {
         tick += 1
     }
 
-    /// Opening Quick AI: carries on with this chat unless it's been idle past the setting's timeout, or was an AI
-    /// command's (those are continued from the history).
+    /// Opening Quick AI: carries on with this chat unless it's been idle past the setting's timeout, was an AI
+    /// command's (those are continued from the history), or still holds text you didn't ask about.
     func prepareForOpening() {
-        if command != nil || !AIContinuity.continues(lastActivity: lastActivity, minutes: preferences.newChatAfter) {
+        if command != nil || attachment != nil || !AIContinuity.continues(lastActivity: lastActivity, minutes: preferences.newChatAfter) {
             startNew()
         }
     }

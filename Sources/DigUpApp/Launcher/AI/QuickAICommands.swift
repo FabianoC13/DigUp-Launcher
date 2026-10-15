@@ -4,7 +4,8 @@ import DigUpKit
 
 /// Running an AI Command (Fix Spelling and Grammar, Summarize…): reads the text selected in the app you came from
 /// (through Accessibility), or the clipboard's when that isn't possible, and asks it in a new Quick AI chat with the
-/// command's instructions as the system prompt. Rewrites paste back over the selection on ↩.
+/// command's instructions as the system prompt. Rewrites paste back over the selection on ↩. Without a command (Ask AI
+/// About Selected Text) the text waits in a plain chat for your question about it.
 enum QuickAICommands {
     /// Texts longer than this are cut (a whole document selected by accident shouldn't cost a fortune).
     static let characterLimit = 100_000
@@ -18,7 +19,7 @@ enum QuickAICommands {
         case none
     }
 
-    static func run(_ command: AICommand, context: LauncherContext, fromClipboard: Bool = false) {
+    static func run(_ command: AICommand?, context: LauncherContext, fromClipboard: Bool = false) {
         guard QuickAIFeature.isSetUp else {
             context.push(QuickAISetupMode(prompt: ""))
             return
@@ -31,11 +32,12 @@ enum QuickAICommands {
         chat.notice = fromClipboard ? "Reading the clipboard…" : "Reading the text selected in \(appName)…"
         context.push(QuickAIMode(chat: chat))
         let chatID = chat.id
+        let again = command.map { "run \($0.title) again" } ?? "ask again"
         Task {
-            let pid = app?.processIdentifier
-            let selection: Selection = fromClipboard || pid == nil
-                ? .none
-                : await Task.detached { selectedText(pid: pid!) }.value
+            var selection = Selection.none
+            if !fromClipboard, let pid = app?.processIdentifier {
+                selection = await Task.detached { selectedText(pid: pid) }.value
+            }
             // You may have left, or started something else, while it was being read.
             guard chat.id == chatID, chat.turns.isEmpty else { return }
             let clipboard = NSPasteboard.general.string(forType: .string)?
@@ -56,23 +58,32 @@ enum QuickAICommands {
                 if !fromClipboard { context.flash("No text selected in \(appName): used the clipboard") }
             case .noPermission:
                 chat.notice = "Quick AI reads the selected text through Accessibility, which DigUp isn't allowed "
-                    + "yet. Allow it in System Settings → Privacy & Security → Accessibility, or copy the text and run "
-                    + "\(command.title) again."
+                    + "yet. Allow it in System Settings → Privacy & Security → Accessibility, or copy the text and "
+                    + "\(again)."
                 Accessibility.isTrusted(prompt: true)
                 return
             case .none:
                 chat.notice = fromClipboard
-                    ? "There's no text on the clipboard. Copy some, then run \(command.title) again."
-                    : "Select some text in \(appName) (or copy it), then run \(command.title) again."
+                    ? "There's no text on the clipboard. Copy some, then \(again)."
+                    : "Select some text in \(appName) (or copy it), then \(again)."
                 return
             }
             if text.count > characterLimit {
                 text = String(text.prefix(characterLimit))
                 context.flash("The text was cut to its first \(characterLimit.formatted()) characters")
             }
+            let origin = source == "clipboard" ? "clipboard" : "selection"
+            guard let command else {
+                chat.attach(text, source: source == "clipboard" ? "from the clipboard" : source)
+                let preview = text.count > 280 ? text.prefix(280) + "…" : text
+                chat.notice = "Ask anything about the \(text.count.formatted()) characters "
+                    + (source == "clipboard" ? "on the clipboard" : source) + ":\n“\(preview)”"
+                log("quick ai: asking about \(text.count) characters (\(origin))")
+                return
+            }
             chat.startNew(command: command, source: source)
             chat.ask(command.message(for: text), shown: text, original: command.replacesSelection ? text : nil)
-            log("quick ai: \(command.rawValue) on \(text.count) characters (\(source == "clipboard" ? "clipboard" : "selection"))")
+            log("quick ai: \(command.rawValue) on \(text.count) characters (\(origin))")
         }
     }
 

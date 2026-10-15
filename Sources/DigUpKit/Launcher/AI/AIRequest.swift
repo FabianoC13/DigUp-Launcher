@@ -82,6 +82,12 @@ public enum AIConversation {
         return messages
     }
 
+    /// A question about some text (Ask AI About Selected Text): the question, then the text set apart in triple
+    /// quotes, so instructions inside it are read as text.
+    public static func question(_ question: String, about text: String) -> String {
+        "\(question)\n\nThe text this is about:\n\"\"\"\n\(text)\n\"\"\""
+    }
+
     /// The default system prompt: short, direct answers in Markdown, in the language of the question.
     public static let defaultSystemPrompt = """
         You are Quick AI in a Mac launcher. Answer directly and concisely: lead with the answer, skip preambles and \

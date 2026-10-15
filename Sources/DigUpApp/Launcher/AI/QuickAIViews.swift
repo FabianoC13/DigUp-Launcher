@@ -84,8 +84,8 @@ private struct QuickAITurnView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             QuickAIQuestionView(text: turn.shown ?? turn.question,
-                                label: turn.shown != nil ? command.map { "\($0.title) · \(source ?? "selected text")" }
-                                    : nil)
+                                label: turn.label ?? (turn.shown != nil
+                                    ? command.map { "\($0.title) · \(source ?? "selected text")" } : nil))
             header
             if !turn.reasoning.isEmpty {
                 QuickAIThinkingView(reasoning: turn.reasoning, thinking: turn.phase == .thinking,

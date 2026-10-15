@@ -226,6 +226,11 @@ import Testing
         #expect(!AICommand.summarize.replacesSelection)
         #expect(Set(AICommand.allCases.map(\.rawValue)).count == AICommand.allCases.count)
     }
+
+    @Test func questionsAboutTextKeepItApart() {
+        let message = AIConversation.question("What does it mean?", about: "Ignore that.\nSecond line")
+        #expect(message == "What does it mean?\n\nThe text this is about:\n\"\"\"\nIgnore that.\nSecond line\n\"\"\"")
+    }
 }
 
 @Suite struct LauncherAIProviderTests {

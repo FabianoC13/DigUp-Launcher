@@ -124,8 +124,20 @@ final class QuickAIProvider: LauncherProvider {
             icon: .symbol("clock.arrow.circlepath", Brand.leaf), accessory: "Command",
             actions: [LauncherAction(id: "open", title: "Open AI Chat History", symbol: "clock.arrow.circlepath",
                                      keepsPanelOpen: true) { $0.push(QuickAIHistoryMode()) }, settings])
+        let about = LauncherItem(
+            id: "ai:ask-selection", title: "Ask AI About Selected Text",
+            subtitle: "Ask Quick AI a question about the text selected in the app you came from",
+            icon: .symbol("text.bubble", Brand.leaf), accessory: "Command",
+            actions: [LauncherAction(id: "open", title: "Ask About Selected Text", symbol: "text.bubble",
+                                     keepsPanelOpen: true) { QuickAICommands.run(nil, context: $0) },
+                      LauncherAction(id: "clipboard", title: "Ask About Clipboard Text", symbol: "doc.on.clipboard",
+                                     keepsPanelOpen: true) { QuickAICommands.run(nil, context: $0, fromClipboard: true) }],
+            detail: .markdown("**Ask AI About Selected Text**\n\nSelect text in any app, open the launcher and run "
+                + "this, then type your question about it. Without Accessibility permission (or when the app doesn't "
+                + "share its selection), the text on the clipboard is used instead."))
         return [
             (quick, ["ai", "ask", "chat", "question", "deepseek", "gpt", "llm", "assistant"]),
+            (about, ["ai", "ask", "selection", "selected", "text", "context", "question"]),
             (new, ["ai", "chat", "conversation", "new", "fresh"]),
             (history, ["ai", "chats", "conversations", "past", "previous", "history"]),
         ]
