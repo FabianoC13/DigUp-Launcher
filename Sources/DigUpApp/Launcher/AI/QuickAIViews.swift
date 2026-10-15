@@ -19,6 +19,9 @@ struct QuickAIConversationView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                if !chat.pendingImages.isEmpty {
+                    QuickAIPendingImagesView(chat: chat)
+                }
                 if chat.turns.isEmpty {
                     QuickAIEmptyState(chat: chat)
                 }
@@ -35,6 +38,48 @@ struct QuickAIConversationView: View {
         .onChange(of: chat.tick) { _, _ in
             scroller.follow()
         }
+    }
+}
+
+/// Thumbnails of images waiting to go with the next question; × removes one before send.
+private struct QuickAIPendingImagesView: View {
+    let chat: QuickAIChat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Attached · ↩ to send")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(chat.pendingImages) { image in
+                        ZStack(alignment: .topTrailing) {
+                            Image(nsImage: image.preview)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 72, height: 72)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            Button {
+                                chat.removePendingImage(image.id)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .symbolRenderingMode(.palette)
+                                    .foregroundStyle(.white, .black.opacity(0.55))
+                                    .font(.system(size: 16))
+                            }
+                            .buttonStyle(.plain)
+                            .offset(x: 4, y: -4)
+                            .help("Remove \(image.name)")
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.06)))
     }
 }
 
@@ -57,7 +102,7 @@ private struct QuickAIEmptyState: View {
                 Text("Ask anything").font(.system(size: 16, weight: .semibold))
                 let preferences = QuickAIPreferences.shared
                 Text("\(preferences.provider.name) answers with \(preferences.displayName(chat.model)). Type a "
-                     + "question and press ↩.")
+                     + "question, or drop an image onto the field, and press ↩.")
                     .font(.system(size: 12.5))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -85,7 +130,8 @@ private struct QuickAITurnView: View {
         VStack(alignment: .leading, spacing: 10) {
             QuickAIQuestionView(text: turn.shown ?? turn.question,
                                 label: turn.label ?? (turn.shown != nil
-                                    ? command.map { "\($0.title) · \(source ?? "selected text")" } : nil))
+                                    ? command.map { "\($0.title) · \(source ?? "selected text")" } : nil),
+                                images: turn.imagePreviews)
             header
             if !turn.reasoning.isEmpty {
                 QuickAIThinkingView(reasoning: turn.reasoning, thinking: turn.phase == .thinking,
@@ -164,6 +210,7 @@ private struct QuickAIQuestionView: View {
     let text: String
     /// "Fix Spelling and Grammar · selected text" above an AI command's text.
     let label: String?
+    var images: [NSImage] = []
     @State private var expanded = false
 
     static let foldedLines = 6
@@ -173,12 +220,25 @@ private struct QuickAIQuestionView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             if let label {
                 Text(label)
                     .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
+            }
+            if !images.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { _, image in
+                            Image(nsImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 64, height: 64)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                    }
+                }
             }
             Text(text)
                 .font(.system(size: 13.5, weight: .medium))

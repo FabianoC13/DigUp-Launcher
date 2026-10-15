@@ -37,6 +37,28 @@ enum QuickAIFeature: LauncherFeature {
         Task { await QuickAIHistory.shared.load() }
     }
 
+    /// Drop or paste of images onto the panel: open Quick AI if needed, then queue them for the next question (never
+    /// insert the file path as text).
+    static func attachImages(_ images: [QuickAIPendingImage], context: LauncherContext) {
+        guard !images.isEmpty else { return }
+        guard isSetUp else {
+            context.push(QuickAISetupMode(prompt: ""))
+            context.flash("Add an API key before attaching images")
+            return
+        }
+        let chat = QuickAIChat.shared
+        chat.context = context
+        if !(context.mode is QuickAIMode) {
+            chat.prepareForOpening()
+            context.push(QuickAIMode(chat: chat))
+        }
+        chat.attachImages(images)
+        let label = images.count == 1 ? "Attached \(images[0].name)" : "Attached \(images.count) images"
+        context.flash(label)
+        context.refresh()
+        Task { await QuickAIHistory.shared.load() }
+    }
+
     /// A fresh chat, whatever the timeout says (the "New AI Chat" command).
     static func newChat(context: LauncherContext) {
         guard isSetUp else {

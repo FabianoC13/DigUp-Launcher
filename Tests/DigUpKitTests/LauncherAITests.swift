@@ -231,6 +231,38 @@ import Testing
         let message = AIConversation.question("What does it mean?", about: "Ignore that.\nSecond line")
         #expect(message == "What does it mean?\n\nThe text this is about:\n\"\"\"\nIgnore that.\nSecond line\n\"\"\"")
     }
+
+    @Test func imageMessagesEncodeAsContentParts() throws {
+        let image = AIImageAttachment(dataURL: "data:image/png;base64,abc")
+        let request = AIChatRequest(model: "deepseek-flash",
+                                    messages: [AIChatMessage(.user, "que dice aqui", images: [image])],
+                                    stream: false)
+        let json = try object(request)
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let content = try #require(messages[0]["content"] as? [[String: Any]])
+        #expect(content.count == 2)
+        #expect(content[0]["type"] as? String == "text")
+        #expect(content[0]["text"] as? String == "que dice aqui")
+        #expect(content[1]["type"] as? String == "image_url")
+        #expect((content[1]["image_url"] as? [String: String]) == ["url": "data:image/png;base64,abc"])
+        // Text-only stays a plain string on the wire.
+        let plain = try object(AIChatRequest(model: "m", messages: [AIChatMessage(.user, "hi")], stream: false))
+        #expect(((plain["messages"] as? [[String: Any]])?[0]["content"] as? String) == "hi")
+    }
+
+    @Test func conversationsKeepImagesOnUserTurns() {
+        let shot = AIImageAttachment(dataURL: "data:image/png;base64,a")
+        let messages = AIConversation.messages(
+            system: "System.",
+            history: [(question: "first", answer: "A", images: [shot])],
+            question: "follow-up", images: [])
+        #expect(messages == [
+            AIChatMessage(.system, "System."),
+            AIChatMessage(.user, "first", images: [shot]),
+            AIChatMessage(.assistant, "A"),
+            AIChatMessage(.user, "follow-up"),
+        ])
+    }
 }
 
 @Suite struct LauncherAIProviderTests {

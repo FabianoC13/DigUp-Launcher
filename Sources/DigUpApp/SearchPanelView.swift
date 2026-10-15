@@ -54,7 +54,8 @@ struct SearchPanelView: View {
             SearchField(text: $controller.query, fontSize: 22,
                         placeholder: controller.mode?.placeholder ?? (controller.model.hasCode
                             ? "Search apps, commands and files, or press Tab to ask AI…"
-                            : "Search apps, commands and files, or press Tab to ask AI…")) {
+                            : "Search apps, commands and files, or press Tab to ask AI…"),
+                        onImages: { QuickAIFeature.attachImages($0, context: controller.context) }) {
                 controller.field = $0
             }
             if controller.phase == .words, controller.encoder == .starting {
@@ -454,6 +455,8 @@ struct SearchField: NSViewRepresentable {
     @Binding var text: String
     var fontSize: CGFloat = 22
     let placeholder: String
+    /// Images dropped or pasted onto the field (Quick AI attaches them; the path is never inserted as text).
+    var onImages: ([QuickAIPendingImage]) -> Void = { _ in }
     var onMake: (NSTextField) -> Void = { _ in }
     /// The field got the cursor (true) or lost it (false).
     var onFocus: (Bool) -> Void = { _ in }
@@ -461,6 +464,7 @@ struct SearchField: NSViewRepresentable {
     func makeNSView(context: Context) -> NSTextField {
         let field = FocusReportingField()
         field.onFocus = onFocus
+        field.onImages = onImages
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
@@ -470,6 +474,9 @@ struct SearchField: NSViewRepresentable {
         field.cell?.isScrollable = true
         field.cell?.wraps = false
         field.delegate = context.coordinator
+        field.registerForDraggedTypes([.fileURL, .png, .tiff,
+                                       NSPasteboard.PasteboardType("public.jpeg"),
+                                       NSPasteboard.PasteboardType("public.heic")])
         field.setAccessibilityLabel("Search")
         onMake(field)
         return field
@@ -477,7 +484,10 @@ struct SearchField: NSViewRepresentable {
 
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.text = $text
-        (field as? FocusReportingField)?.onFocus = onFocus
+        if let field = field as? FocusReportingField {
+            field.onFocus = onFocus
+            field.onImages = onImages
+        }
         // While an input method composes (Korean, Japanese, Chinese), the field is ahead of `text` until the syllable
         // is committed, and writing `text` back would cut the composition short ("사어ㅂ" typed for "사업").
         if (field.currentEditor() as? NSTextView)?.hasMarkedText() != true, field.stringValue != text {
@@ -502,9 +512,11 @@ struct SearchField: NSViewRepresentable {
     }
 }
 
-/// A text field that says when it gets the cursor and when it gives it up (its editing ends).
+/// A text field that says when it gets the cursor and when it gives it up (its editing ends). Image drops and image
+/// pastes are handed to `onImages` instead of inserting a file path as text.
 final class FocusReportingField: NSTextField {
     var onFocus: (Bool) -> Void = { _ in }
+    var onImages: ([QuickAIPendingImage]) -> Void = { _ in }
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
@@ -515,6 +527,51 @@ final class FocusReportingField: NSTextField {
     override func textDidEndEditing(_ notification: Notification) {
         super.textDidEndEditing(notification)
         onFocus(false)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        QuickAIImages.canAccept(sender) ? .copy : super.draggingEntered(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        QuickAIImages.canAccept(sender) || super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let images = QuickAIImages.fromDraggingInfo(sender)
+        guard !images.isEmpty else { return super.performDragOperation(sender) }
+        onImages(images)
+        return true
+    }
+}
+
+/// Field editor for DigUp's search field: intercepts image file drops and image pastes so paths never land as text.
+final class DigUpFieldEditor: NSTextView {
+    /// The search field that owns this editor while it's editing (set from `SearchPanelWindow.fieldEditor`).
+    weak var digUpField: FocusReportingField?
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        QuickAIImages.canAccept(sender) ? .copy : super.draggingEntered(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        QuickAIImages.canAccept(sender) || super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let images = QuickAIImages.fromDraggingInfo(sender)
+        guard !images.isEmpty else { return super.performDragOperation(sender) }
+        digUpField?.onImages(images)
+        return true
+    }
+
+    override func paste(_ sender: Any?) {
+        let images = QuickAIImages.fromPasteboard(.general)
+        if !images.isEmpty {
+            digUpField?.onImages(images)
+            return
+        }
+        super.paste(sender)
     }
 }
 
