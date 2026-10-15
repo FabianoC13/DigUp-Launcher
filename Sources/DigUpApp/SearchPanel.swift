@@ -59,6 +59,8 @@ final class SearchPanelController {
     @ObservationIgnored private var mouseMonitor: Any?
     @ObservationIgnored private var resignObserver: NSObjectProtocol?
     @ObservationIgnored private var resignKeyObserver: NSObjectProtocol?
+    /// Waits for the mouse button to come up after the panel lost the keys mid-click (`hideUnlessDragging`).
+    @ObservationIgnored private var dragWatch: Timer?
     /// The glass behind the content (hidden when a look has no blur).
     @ObservationIgnored private var backdrop: NSView?
     @ObservationIgnored private var keyWindowObserver: NSObjectProtocol?
@@ -185,6 +187,8 @@ final class SearchPanelController {
     }
 
     func hide() {
+        dragWatch?.invalidate()
+        dragWatch = nil
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
             QLPreviewPanel.shared().orderOut(nil)
         }
@@ -478,7 +482,7 @@ final class SearchPanelController {
                 guard let self else { return }
                 DispatchQueue.main.async { [weak self] in   // once the new key window is set
                     guard let self, NSApp.keyWindow == nil, !PanelAppearance.shared.tuning else { return }
-                    self.hide()
+                    self.hideUnlessDragging()
                 }
             }
         }
@@ -486,7 +490,7 @@ final class SearchPanelController {
             forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             // While the stealth tuning page is open, the panel stays up over the browser.
-            MainActor.assumeIsolated { if !PanelAppearance.shared.tuning { self?.hide() } }
+            MainActor.assumeIsolated { if !PanelAppearance.shared.tuning { self?.hideUnlessDragging() } }
         }
         // Another of the app's windows came forward (⌘, or ⌘N while the panel was up): the panel steps away, like
         // Spotlight, rather than float over it and take its keys.
@@ -503,6 +507,35 @@ final class SearchPanelController {
                     self.hide()
                 }
             }
+        }
+    }
+
+    /// The panel lost the keys to another app. A click there can be the start of a drag towards the panel (a picture
+    /// from Finder for Quick AI): while the button is held the panel waits, and when it's let go over the panel (the
+    /// drop landed in the field) it stays and takes the keys back. Let go anywhere else, it hides.
+    private func hideUnlessDragging() {
+        guard NSEvent.pressedMouseButtons & 1 != 0, window?.isVisible == true, !fading else {
+            hide()
+            return
+        }
+        guard dragWatch == nil else { return }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkDragEnded() }
+        }
+        RunLoop.main.add(timer, forMode: .common)   // .common: it also runs while a drag is being tracked
+        dragWatch = timer
+    }
+
+    private func checkDragEnded() {
+        guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+        dragWatch?.invalidate()
+        dragWatch = nil
+        guard let window, window.isVisible, !fading else { return }
+        if window.frame.contains(NSEvent.mouseLocation) {
+            window.makeKeyAndOrderFront(nil)
+            if let field { window.makeFirstResponder(field) }
+        } else if NSApp.keyWindow == nil {
+            hide()
         }
     }
 
