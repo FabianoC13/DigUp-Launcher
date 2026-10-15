@@ -15,6 +15,8 @@ final class ClipboardNumberKeys {
         Int64(kVK_ANSI_6): 6, Int64(kVK_ANSI_7): 7, Int64(kVK_ANSI_8): 8, Int64(kVK_ANSI_9): 9,
     ]
 
+    /// For pasting past the panel when it's open.
+    weak var launcher: Launcher?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var retryTimer: Timer?
@@ -77,8 +79,9 @@ final class ClipboardNumberKeys {
         if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
     }
 
-    /// Pastes the `number`th most recent entry into the app in front and puts the clipboard back.
-    fileprivate func paste(_ number: Int) {
+    /// Pastes the `number`th most recent entry into the app in front (the one you came from, when DigUp's panel is
+    /// open) and puts the clipboard back.
+    func paste(_ number: Int) {
         let store = ClipboardStore.shared
         let recent = store.byRecency
         guard recent.indices.contains(number - 1) else {
@@ -92,9 +95,14 @@ final class ClipboardNumberKeys {
         }
         // Not a new copy, and not a reason to move the entry up: the numbers stay as they were.
         store.ignoreCurrentPasteboard()
-        Keystrokes.post(keyCode: CGKeyCode(kVK_ANSI_V), flags: .maskCommand)
+        let viaPanel = launcher?.panel?.isVisible == true
+        if viaPanel, let context = launcher?.panel?.context {
+            context.pasteClipboard()   // hides the panel, brings back the app you came from, ⌘V
+        } else {
+            Keystrokes.post(keyCode: CGKeyCode(kVK_ANSI_V), flags: .maskCommand)
+        }
         Task {
-            try? await Task.sleep(for: .milliseconds(400))
+            try? await Task.sleep(for: .milliseconds(viaPanel ? 700 : 400))
             SnippetPaster.restore(saved)
             store.ignoreCurrentPasteboard()
         }

@@ -1,16 +1,39 @@
 <p align="center"><img src="docs/logo.png" width="96" alt=""></p>
 
-<h1 align="center">DigUp</h1>
+<h1 align="center">DigUp Launcher</h1>
 
-<p align="center"><b>Describe it. Dig it up.</b><br>
-Search the files on your Mac by what's in them, with Google DeepMind's
-<a href="https://huggingface.co/google/embeddinggemma-2">EmbeddingGemma 2</a>.</p>
+<p align="center"><b>A Raycast-style launcher for the Mac, with DigUp's meaning search of your files.</b><br>
+A fork of <a href="https://github.com/ARahim3/DigUp">ARahim3/DigUp</a> (MIT), not affiliated with it, Raycast or
+Google.</p>
 
-<p align="center"><a href="https://github.com/ARahim3/DigUp/releases/latest"><b>Download for Mac</b></a> · Apple Silicon,
-macOS 14 or later · Free and open source<br>
-<sub>Windows and Linux versions are on the way.</sub></p>
+## What this fork adds
 
-<p align="center"><img src="docs/demo.gif" width="800" alt="DigUp's search panel finding a zebra in a video, a podcast moment, a clause in a lease, a dog on the beach in English, Bengali and Arabic, and code that opens in Zed"></p>
+Press **⌘Space** and type. Apps, commands and answers show at once; DigUp's search of your files by what's in them
+(EmbeddingGemma 2, on your Mac) streams in below. Press **Tab** to ask AI instead.
+
+- **Quick AI**: Tab sends what you typed to your own API key, DeepSeek first (also OpenAI, Anthropic, OpenRouter,
+  Gemini, Ollama or any OpenAI-compatible server). The first launch asks for a key; it's kept in the Keychain. The
+  answer streams in; ⌘C copies it, ↩ pastes it, follow-ups keep the conversation. AI commands work on selected text
+  (fix grammar, summarize, translate…).
+- **Apps and System Settings**: launch apps and Settings panes, quit or hide running apps, find files by name.
+- **Calculator**: math, units, currency, time zones, dates, number bases, word definitions.
+- **System and windows**: lock, sleep, dark mode, volume, empty trash, keep awake; window layouts (halves, thirds,
+  quarters, displays), switch windows, search an app's menu items.
+- **Clipboard History**: everything you copy, searchable and pinnable. **fn+1 … fn+9** paste your last nine copies
+  anywhere, without opening DigUp.
+- **Snippets** with keyword expansion, **Quicklinks** ("google cats"), favorites, aliases and hotkeys for any item,
+  `digup://` deeplinks, an optional Hyper Key.
+- **My Schedule** (join meetings), floating **Notes**, **Focus** sessions that block apps and sites, **Script
+  Commands**.
+- A dark blue theme and icon. Updates from upstream are off (they would replace the launcher).
+
+Pasting, window layouts, text expansion and fn+1…9 need DigUp in System Settings → Privacy & Security → Accessibility.
+Build it with `./build.sh` (see *Build from source* below) and copy `build.noindex/DigUp.app` to /Applications.
+The design notes are in [docs/launcher/SPEC.md](docs/launcher/SPEC.md).
+
+---
+
+*The original DigUp README follows.*
 
 EmbeddingGemma 2 is the multimodal embedding model Google DeepMind released in October 2026. It puts text, images,
 audio and video into one shared space: a photo of a dog on a beach lands next to the words "a dog on the beach", and a

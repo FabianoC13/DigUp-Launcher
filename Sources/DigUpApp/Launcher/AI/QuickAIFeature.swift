@@ -12,6 +12,7 @@ enum QuickAIFeature: LauncherFeature {
 
     static func start(_ launcher: Launcher) {
         Task { await QuickAIHistory.shared.load() }
+        QuickAIFirstRun.askIfNeeded(launcher)
     }
 
     static var settingsTitle: String? { "Quick AI" }

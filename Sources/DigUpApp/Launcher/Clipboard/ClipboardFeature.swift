@@ -14,6 +14,7 @@ enum ClipboardFeature: LauncherFeature {
     /// Loads the history, then starts watching the pasteboard; expired entries go once an hour.
     static func start(_ launcher: Launcher) {
         let store = ClipboardStore.shared
+        ClipboardNumberKeys.shared.launcher = launcher
         store.onChange.append { [weak launcher] in
             // An open Clipboard History shows a new copy (or a deleted entry) right away.
             guard let panel = launcher?.panel, panel.isVisible, panel.mode is ClipboardHistoryMode else { return }

@@ -8,7 +8,7 @@ final class ClipboardHistoryMode: LauncherMode {
     let title = "Clipboard History"
     let placeholder = "Search what you copied… (try “images” or “links”)"
     let icon: LauncherIcon = .symbol("doc.on.clipboard")
-    var keysHint: String? { "↩ Paste   ⌘↩ Copy   ⌥1–9 Paste   ⌘1–9 Copy   ⌘K Actions" }
+    var keysHint: String? { "↩ Paste   ⌘↩ Copy   fn 1–9 Paste   ⌘K Actions" }
     var statusHint: String? {
         if store.settings.paused { return "Recording paused" }
         let count = store.entries.count
@@ -31,7 +31,7 @@ final class ClipboardHistoryMode: LauncherMode {
         let now = Date()
         let search = ClipboardSearch(parsing: query.raw)
         var items: [LauncherItem] = []
-        // ⌘1…⌘9 / ⌥1…⌥9 (as in Maccy) and fn+1…fn+9 anywhere count copies newest first, pinned or not.
+        // fn+1…fn+9 count copies newest first, pinned or not.
         let numbers = Dictionary(uniqueKeysWithValues: store.byRecency.prefix(9).enumerated().map { ($1.id, $0 + 1) })
         for group in ClipboardHistoryRules.ordered(store.entries, now: now) {
             let section = LauncherSection.named(group.section.title, order: group.section.rawValue)
@@ -45,33 +45,18 @@ final class ClipboardHistoryMode: LauncherMode {
 
     // MARK: Keys
 
-    /// Maccy's keys: ⌘1…⌘9 copy, ⌥1…⌥9 paste, ⌥⇧1…⌥⇧9 paste as plain text the nth newest copy; ⌥⌫ deletes the selected
-    /// entry.
+    /// fn+1…fn+9 paste the nth newest copy into the app you came from (the same keys work anywhere, through
+    /// `ClipboardNumberKeys`; this catches them when its tap isn't running). ⌥⌫ deletes the selected entry.
     func handle(_ event: NSEvent, query: String, context: LauncherContext) -> Bool {
-        let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
+        let flags = event.modifierFlags.intersection([.command, .option, .shift, .control, .function])
         if event.keyCode == 51, flags == .option, let id = context.selectedItemID, id.hasPrefix("clip:") {
             store.delete(String(id.dropFirst(5)))
             context.refresh()
             context.flash("Deleted")
             return true
         }
-        guard let number = ClipboardNumberKeys.digitKeys[Int64(event.keyCode)],
-              [.command, .option, [.option, .shift]].contains(flags) else { return false }
-        let recent = store.byRecency
-        guard recent.indices.contains(number - 1) else {
-            NSSound.beep()
-            return true
-        }
-        let entry = recent[number - 1]
-        guard store.write(entry, plainText: flags == [.option, .shift]) else {
-            Self.missing()
-            return true
-        }
-        if flags == .command {
-            context.hide()
-        } else {
-            context.pasteClipboard()
-        }
+        guard flags == .function, let number = ClipboardNumberKeys.digitKeys[Int64(event.keyCode)] else { return false }
+        ClipboardNumberKeys.shared.paste(number)
         return true
     }
 
@@ -84,7 +69,7 @@ final class ClipboardHistoryMode: LauncherMode {
             id: "clip:\(entry.id)", title: entry.title,
             subtitle: [entry.sourceName, when].compactMap { $0 }.joined(separator: " · "),
             icon: icon(for: entry),
-            accessory: [entry.kind == .text ? nil : entry.kind.title, number.map { "⌥\($0)" }].compactMap { $0 }
+            accessory: [entry.kind == .text ? nil : entry.kind.title, number.map { "fn \($0)" }].compactMap { $0 }
                 .joined(separator: "  "),
             section: section, score: 0.5,
             actions: actions(for: entry), detail: detail(for: entry), metadata: metadata(for: entry),
