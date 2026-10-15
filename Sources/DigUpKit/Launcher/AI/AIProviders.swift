@@ -22,10 +22,14 @@ public struct AIProviderPreset: Identifiable, Equatable, Sendable {
     public let keyOptional: Bool
     /// A header that carries the key as well as `Authorization: Bearer` (Anthropic's `x-api-key`).
     public let keyHeader: String?
+    /// The models known to read images, best first; nil when unknown (any model may). A question with an image goes to
+    /// one of these: DeepSeek-V4-Pro takes the request but says the image is unsupported.
+    public let imageModels: [String]?
 
     public init(id: String, name: String, baseURL: String, models: [String], alternateModel: String?, keyPage: String?,
                 thinkingSwitch: Bool = false, headers: [String: String] = [:], keyOptional: Bool = false,
-                keyHeader: String? = nil) {
+                keyHeader: String? = nil, imageModels: [String]? = nil) {
+        self.imageModels = imageModels
         self.id = id
         self.name = name
         self.baseURL = baseURL
@@ -62,7 +66,7 @@ public struct AIProviderPreset: Identifiable, Equatable, Sendable {
     public static let deepSeek = AIProviderPreset(
         id: "deepseek", name: "DeepSeek", baseURL: "https://api.deepseek.com",
         models: ["deepseek-flash", "deepseek-v4-pro"], alternateModel: "deepseek-v4-pro",
-        keyPage: "https://platform.deepseek.com/api_keys", thinkingSwitch: true)
+        keyPage: "https://platform.deepseek.com/api_keys", thinkingSwitch: true, imageModels: ["deepseek-flash"])
     public static let openAI = AIProviderPreset(
         id: "openai", name: "OpenAI", baseURL: "https://api.openai.com/v1",
         models: ["gpt-5-mini", "gpt-5"], alternateModel: "gpt-5",
@@ -89,6 +93,13 @@ public struct AIProviderPreset: Identifiable, Equatable, Sendable {
     public static let custom = AIProviderPreset(
         id: "custom", name: "Custom (OpenAI-compatible)", baseURL: "", models: [], alternateModel: nil, keyPage: nil,
         keyOptional: true)
+
+    /// The model to ask a question with images: `model` when it reads images (or that's unknown), else the first that
+    /// does.
+    public func model(forImages model: String) -> String {
+        guard let imageModels, !imageModels.contains(model), let first = imageModels.first else { return model }
+        return first
+    }
 
     public static let all: [AIProviderPreset] = [
         .deepSeek, .openAI, .anthropic, .openRouter, .gemini, .ollama, .custom,

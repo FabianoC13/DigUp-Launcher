@@ -161,9 +161,12 @@ final class QuickAIChat {
             text = AIConversation.question(text, about: attachment.text)
             self.attachment = nil
         }
+        // Images (now or earlier in the chat, which the request carries again) need a model that reads them.
+        let withImages = !pending.isEmpty || turns.contains { !$0.images.isEmpty }
+        let turnModel = withImages ? preferences.provider.model(forImages: model) : model
         let turn = QuickAITurn(question: text, shown: shown, original: original, label: label,
                                images: pending.map(\.attachment), imagePreviews: pending.map(\.preview),
-                               model: model)
+                               model: turnModel)
         turns.append(turn)
         lastActivity = Date()
         tick += 1

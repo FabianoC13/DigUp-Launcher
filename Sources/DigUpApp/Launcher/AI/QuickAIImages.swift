@@ -38,6 +38,7 @@ enum QuickAIImages {
 
     static func canAccept(_ pasteboard: NSPasteboard) -> Bool {
         if !(imageFileURLs(from: pasteboard).isEmpty) { return true }
+        if hasFiles(pasteboard) { return false }   // a PDF or a folder: Finder's icon for it isn't a picture to send
         return pasteboardTypes.contains { pasteboard.data(forType: $0) != nil }
             || pasteboard.canReadObject(forClasses: [NSImage.self], options: nil)
     }
@@ -57,6 +58,8 @@ enum QuickAIImages {
         if !urls.isEmpty {
             return urls.compactMap { fromFile($0) }
         }
+        // Files that aren't images come with Finder's icon for them as a picture: that isn't what was meant.
+        if hasFiles(pasteboard) { return [] }
         for type in pasteboardTypes {
             if let data = pasteboard.data(forType: type), let image = fromData(data, name: "Clipboard image") {
                 return [image]
@@ -85,6 +88,10 @@ enum QuickAIImages {
     }
 
     // MARK: Dragging helpers
+
+    private static func hasFiles(_ pasteboard: NSPasteboard) -> Bool {
+        pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+    }
 
     private static func imageFileURLs(from pasteboard: NSPasteboard) -> [URL] {
         let options: [NSPasteboard.ReadingOptionKey: Any] = [

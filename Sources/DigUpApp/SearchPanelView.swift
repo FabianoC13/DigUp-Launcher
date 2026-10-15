@@ -566,7 +566,12 @@ final class DigUpFieldEditor: NSTextView {
     }
 
     override func paste(_ sender: Any?) {
-        let images = QuickAIImages.fromPasteboard(.general)
+        // Text wins: Word, Pages and others put a picture of copied text on the clipboard too. An image is attached
+        // when the clipboard holds image files, or a picture and no text (a screenshot).
+        let pasteboard = NSPasteboard.general
+        let hasText = pasteboard.string(forType: .string)?.isEmpty == false
+        let hasFiles = pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        let images = hasText && !hasFiles ? [] : QuickAIImages.fromPasteboard(pasteboard)
         if !images.isEmpty {
             digUpField?.onImages(images)
             return

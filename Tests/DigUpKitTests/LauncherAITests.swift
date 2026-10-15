@@ -569,3 +569,12 @@ import Testing
         #expect(failure.message.hasPrefix("The API key was refused by DeepSeek."))
     }
 }
+
+@Suite struct LauncherAIImageModelTests {
+    @Test func questionsWithImagesGoToAModelThatReadsThem() {
+        #expect(AIProviderPreset.deepSeek.model(forImages: "deepseek-v4-pro") == "deepseek-flash")
+        #expect(AIProviderPreset.deepSeek.model(forImages: "deepseek-flash") == "deepseek-flash")
+        // Unknown for the others: the chosen model stays.
+        #expect(AIProviderPreset.openAI.model(forImages: "gpt-x") == "gpt-x")
+    }
+}
