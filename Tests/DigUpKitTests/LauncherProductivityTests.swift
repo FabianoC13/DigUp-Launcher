@@ -432,3 +432,35 @@ import Testing
         #expect(ScheduleText.availability([], calendar: calendar, locale: locale) == "No free time")
     }
 }
+
+@Suite struct LauncherProductivityNotesEditingTests {
+    @Test func blockMarkersToggle() {
+        #expect(NotesEditing.toggle(.heading(2), line: "Plan") == "## Plan")
+        #expect(NotesEditing.toggle(.heading(2), line: "## Plan") == "Plan")
+        #expect(NotesEditing.toggle(.heading(1), line: "### Plan") == "# Plan")
+        #expect(NotesEditing.toggle(.bullet, line: "  milk") == "  - milk")
+        #expect(NotesEditing.toggle(.bullet, line: "  - milk") == "  milk")
+        #expect(NotesEditing.toggle(.task, line: "- milk") == "- [ ] milk")
+        #expect(NotesEditing.toggle(.numbered, line: "12. step") == "step")
+        #expect(NotesEditing.toggle(.quote, line: "# idea") == "> idea")
+    }
+
+    @Test func tasksCheckAndUncheck() {
+        #expect(NotesEditing.toggleTask(line: "- [ ] milk") == "- [x] milk")
+        #expect(NotesEditing.toggleTask(line: "\t- [X] milk") == "\t- [ ] milk")
+        #expect(NotesEditing.toggleTask(line: "milk") == "- [ ] milk")
+        #expect(NotesEditing.toggleTask(line: "- milk") == "- [ ] milk")
+    }
+
+    @Test func inlineMarksWrapAndUnwrap() {
+        #expect(NotesEditing.wrap("word", mark: "**", before: "a ", after: " b") == ("**word**", 0))
+        #expect(NotesEditing.wrap("**word**", mark: "**", before: "", after: "") == ("word", 0))
+        #expect(NotesEditing.wrap("word", mark: "**", before: "a **", after: "** b") == ("word", 2))
+        #expect(NotesEditing.wrap("", mark: "`", before: "", after: "") == ("``", 0))
+    }
+
+    @Test func wordsAreCounted() {
+        #expect(NotesEditing.wordCount("# Title\n\n- milk, eggs — and 2 more") == 6)
+        #expect(NotesEditing.wordCount("  \n ") == 0)
+    }
+}

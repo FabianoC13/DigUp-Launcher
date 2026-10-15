@@ -163,3 +163,79 @@ public enum NotesText {
         return atWord.trimmingCharacters(in: .whitespaces) + "…"
     }
 }
+
+/// The note window's formatting keys, as edits of Markdown text: a line's block marker (heading, bullet, task) and
+/// inline marks around a selection (bold, italic, code, strikethrough). Each returns the new text of what it changes.
+public enum NotesEditing {
+    public enum Block: Sendable, Equatable {
+        case heading(Int), bullet, numbered, task, quote
+    }
+
+    /// A line with `block` toggled: on (replacing another block marker, keeping the indent), or off when the line
+    /// already is one. A task's box stays checked or unchecked when it's turned into something else and back.
+    public static func toggle(_ block: Block, line: String) -> String {
+        let indent = String(line.prefix { $0 == " " || $0 == "\t" })
+        let body = String(line.dropFirst(indent.count))
+        let (current, rest) = marker(of: body)
+        if current == block { return indent + rest }
+        let prefix: String
+        switch block {
+        case .heading(let level): prefix = String(repeating: "#", count: max(1, min(6, level))) + " "
+        case .bullet: prefix = "- "
+        case .numbered: prefix = "1. "
+        case .task: prefix = "- [ ] "
+        case .quote: prefix = "> "
+        }
+        return indent + prefix + rest
+    }
+
+    /// A task line checked or unchecked ("- [ ] milk" ↔ "- [x] milk"); any other line becomes an unchecked task.
+    public static func toggleTask(line: String) -> String {
+        let indent = String(line.prefix { $0 == " " || $0 == "\t" })
+        let body = line.dropFirst(indent.count)
+        for (from, to) in [("- [ ] ", "- [x] "), ("* [ ] ", "* [x] "), ("- [x] ", "- [ ] "), ("- [X] ", "- [ ] "),
+                           ("* [x] ", "* [ ] "), ("* [X] ", "* [ ] ")] where body.hasPrefix(from) {
+            return indent + to + body.dropFirst(from.count)
+        }
+        return toggle(.task, line: line)
+    }
+
+    /// The block marker a line starts with, and the line after it.
+    static func marker(of body: String) -> (Block?, String) {
+        for task in ["- [ ] ", "- [x] ", "- [X] ", "* [ ] ", "* [x] ", "* [X] "] where body.hasPrefix(task) {
+            return (.task, String(body.dropFirst(task.count)))
+        }
+        let hashes = body.prefix { $0 == "#" }
+        if (1...6).contains(hashes.count), body.dropFirst(hashes.count).hasPrefix(" ") {
+            return (.heading(hashes.count), String(body.dropFirst(hashes.count + 1)))
+        }
+        for bullet in ["- ", "* ", "+ "] where body.hasPrefix(bullet) {
+            return (.bullet, String(body.dropFirst(bullet.count)))
+        }
+        let digits = body.prefix { $0.isNumber }
+        if !digits.isEmpty, body.dropFirst(digits.count).hasPrefix(". ") {
+            return (.numbered, String(body.dropFirst(digits.count + 2)))
+        }
+        if body.hasPrefix("> ") { return (.quote, String(body.dropFirst(2))) }
+        return (nil, body)
+    }
+
+    /// `selection` with `mark` around it ("**bold**"), or without it when it already has it, either inside the
+    /// selection or just outside: `before` and `after` are the characters around the selection. Returns the
+    /// replacement and how many characters of the outside it takes in on each side.
+    public static func wrap(_ selection: String, mark: String, before: String, after: String)
+        -> (replacement: String, outside: Int) {
+        if selection.count >= 2 * mark.count, selection.hasPrefix(mark), selection.hasSuffix(mark) {
+            return (String(selection.dropFirst(mark.count).dropLast(mark.count)), 0)
+        }
+        if before.hasSuffix(mark), after.hasPrefix(mark) {
+            return (selection, mark.count)
+        }
+        return (mark + selection + mark, 0)
+    }
+
+    /// Words in a note, for the window's count.
+    public static func wordCount(_ text: String) -> Int {
+        text.split { $0.isWhitespace || $0.isNewline }.filter { $0.contains { $0.isLetter || $0.isNumber } }.count
+    }
+}
