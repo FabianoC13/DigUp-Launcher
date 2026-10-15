@@ -67,6 +67,7 @@ final class ScheduleStore {
     @ObservationIgnored private var eventStore = EKEventStore()
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var lastLoad = Date.distantPast
+    @ObservationIgnored private var lastAccessCheck = Date.distantPast
     @ObservationIgnored private var observer: NSObjectProtocol?
     @ObservationIgnored private var requesting = false
 
@@ -110,8 +111,21 @@ final class ScheduleStore {
 
     /// Reads the events again when the last read is older than `seconds` (times move on: "In 5 min", "Now").
     func reloadIfStale(after seconds: TimeInterval = 60) {
-        access = EKEventStore.authorizationStatus(for: .event)
-        if hasAccess, Date().timeIntervalSince(lastLoad) > seconds { reload() }
+        // Asking for the authorization status is a round trip to macOS's privacy service (~40 ms): at most every 30 s,
+        // never on every keystroke. Reading the events waits for the keystroke's results to show.
+        if Date().timeIntervalSince(lastAccessCheck) > 30 {
+            lastAccessCheck = Date()
+            Task { [weak self] in
+                let status = await Task.detached { EKEventStore.authorizationStatus(for: .event) }.value
+                guard let self, status != access else { return }
+                access = status
+                if hasAccess { reload() }
+            }
+        }
+        if hasAccess, Date().timeIntervalSince(lastLoad) > seconds {
+            lastLoad = Date()
+            Task { [weak self] in self?.reload() }
+        }
     }
 
     func reload() {

@@ -318,9 +318,17 @@ final class SearchPanelController {
     /// The root search's providers, for what's typed; their items show as each one answers.
     private func runLauncher(_ text: String, generation current: Int) {
         stopLauncher()
+        let typed = typedAt
         launcherTasks = launcher.search(LauncherQuery(text)) { [weak self] found, final in
             guard let self, current == generation, mode == nil else { return }
             showItems(found)
+            if final {
+                let shown = Date()
+                DispatchQueue.main.async {
+                    log("launcher \"\(text)\": \(found.count) items shown \(ms(since: typed, until: shown)), drawn by "
+                        + "\(ms(since: typed)) after the keystroke")
+                }
+            }
             // Nothing else is coming when files aren't searched (debug hooks wait for this).
             if final, phase == .launcher || phase == .empty { onFinalResults?() }
         }

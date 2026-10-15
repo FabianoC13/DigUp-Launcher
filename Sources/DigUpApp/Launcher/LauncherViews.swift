@@ -2,6 +2,35 @@ import AppKit
 import DigUpKit
 import SwiftUI
 
+/// Icons and pictures the launcher draws, kept: SwiftUI asks for a row's icon on every redraw, and each keystroke
+/// redraws the list. Finder icons are a trip to Launch Services and the icon store; pictures a read of the disk.
+enum LauncherIcons {
+    private static let icons: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 600
+        return cache
+    }()
+    private static let images: NSCache<NSURL, NSImage> = {
+        let cache = NSCache<NSURL, NSImage>()
+        cache.countLimit = 40
+        return cache
+    }()
+
+    static func icon(forFile path: String) -> NSImage {
+        if let icon = icons.object(forKey: path as NSString) { return icon }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        icons.setObject(icon, forKey: path as NSString)
+        return icon
+    }
+
+    static func image(at url: URL) -> NSImage? {
+        if let image = images.object(forKey: url as NSURL) { return image }
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        images.setObject(image, forKey: url as NSURL)
+        return image
+    }
+}
+
 /// An item's icon at a size.
 struct LauncherIconView: View {
     let icon: LauncherIcon
@@ -11,7 +40,7 @@ struct LauncherIconView: View {
         Group {
             switch icon {
             case .file(let url):
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                Image(nsImage: LauncherIcons.icon(forFile: url.path))
                     .resizable()
                     .aspectRatio(contentMode: .fit)
             case .symbol(let name, let tint):
@@ -178,7 +207,7 @@ struct LauncherDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         case .image(let url):
-            if let image = NSImage(contentsOf: url) {
+            if let image = LauncherIcons.image(at: url) {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)

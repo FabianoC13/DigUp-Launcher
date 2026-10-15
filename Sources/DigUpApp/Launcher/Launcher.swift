@@ -92,6 +92,8 @@ final class Launcher {
     static let resultsLimit = 40
     /// How long the first results of a keystroke wait for slower providers.
     static let firstUpdateWait: Duration = .milliseconds(40)
+    /// A provider slower than this is logged (each keystroke runs them all).
+    static let slowProvider: Duration = .milliseconds(8)
     static let suggestionsLimit = 8
 
     init() {
@@ -133,7 +135,10 @@ final class Launcher {
         }
         var tasks = providers.map { provider in
             Task {
+                let started = ContinuousClock.now
                 let found = await provider.items(for: query)
+                let took = ContinuousClock.now - started
+                if took > Self.slowProvider { log("launcher: \(provider.id) took \(took.formatted(.units(allowed: [.milliseconds]))) for \"\(query.text)\"") }
                 guard !Task.isCancelled else { return }
                 parts.byProvider[provider.id] = found
                 parts.waiting -= 1

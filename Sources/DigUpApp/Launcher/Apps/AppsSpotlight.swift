@@ -120,19 +120,25 @@ private final class AppsSpotlightRun {
         timeoutTask?.cancel()
         if let observer { NotificationCenter.default.removeObserver(observer) }
         query.stop()
-        var hits: [AppsFileHit] = []
+        var paths: [String] = []
         if !cancelled {
             query.disableUpdates()
             let count = min(query.resultCount, limit)
-            hits.reserveCapacity(count)
+            paths.reserveCapacity(count)
             for index in 0..<count {
-                if let item = query.result(at: index) as? NSMetadataItem, let hit = AppsFileHit(item) {
-                    hits.append(hit)
+                if let item = query.result(at: index) as? NSMetadataItem,
+                   let path = item.value(forAttribute: NSMetadataItemPathKey) as? String {
+                    paths.append(path)
                 }
             }
         }
-        continuation?.resume(returning: hits)
-        continuation = nil
+        guard let continuation else { return }
+        self.continuation = nil
+        // Each hit's size, dates and kind are a read of the disk: off the main thread, so typing stays smooth.
+        Task.detached(priority: .userInitiated) {
+            let hits = paths.compactMap(AppsFileHit.init(path:))
+            continuation.resume(returning: hits)
+        }
     }
 }
 

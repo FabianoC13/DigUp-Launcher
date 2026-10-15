@@ -118,12 +118,12 @@ import Testing
 
     @Test func spotlightQueriesPerWord() {
         #expect(AppsFileSearchRules.spotlightQuery(for: "tax  2024")
-            == #"(kMDItemFSName == "*tax*"cd) && (kMDItemFSName == "*2024*"cd)"#)
+            == #"(kMDItemFSName == "tax*"cdw) && (kMDItemFSName == "2024*"cdw)"#)
         #expect(AppsFileSearchRules.spotlightQuery(for: "q3 report")
-            == #"(kMDItemFSName == "q3*"cdw) && (kMDItemFSName == "*report*"cd)"#)
+            == #"(kMDItemFSName == "q3*"cdw) && (kMDItemFSName == "report*"cdw)"#)
         #expect(AppsFileSearchRules.spotlightQuery(for: "re", recentDays: 30)
             == #"(kMDItemFSName == "re*"cdw) && (kMDItemLastUsedDate >= $time.today(-30))"#)
-        #expect(AppsFileSearchRules.spotlightQuery(for: #"a*"b"#) == #"(kMDItemFSName == "*a\*\"b*"cd)"#)
+        #expect(AppsFileSearchRules.spotlightQuery(for: #"a*"b"#) == #"(kMDItemFSName == "a\*\"b*"cdw)"#)
         #expect(AppsFileSearchRules.spotlightQuery(for: "  ") == nil)
     }
 

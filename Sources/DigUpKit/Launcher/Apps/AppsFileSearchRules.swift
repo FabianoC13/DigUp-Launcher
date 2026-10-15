@@ -40,18 +40,15 @@ public enum AppsFileSearchRules {
     ]
 
     /// The Spotlight query (MDQuery syntax, for `NSPredicate(fromMetadataQueryString:)`) for files whose names have
-    /// every typed word: a word of three or more letters anywhere in the name ("*budget*"), a shorter one at the start
-    /// of one of the name's words ("re*", word-based: "Q3 report" but not "Firefox"). With fewer than three letters
+    /// every typed word at the start of one of their words ("re*", word-based: "Q3 report" but not "Firefox"). With fewer than three letters
     /// typed in all, only files opened in the last `recentDays` days: two letters match too much else. Spotlight's
     /// wildcards and quotes in what's typed are taken literally. Nil when nothing's typed.
     public static func spotlightQuery(for query: String, recentDays: Int = 90) -> String? {
         let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !words.isEmpty else { return nil }
-        var parts = words.map { word in
-            word.count < 3
-                ? #"kMDItemFSName == "\#(escaped(word))*"cdw"#
-                : #"kMDItemFSName == "*\#(escaped(word))*"cd"#
-        }
+        // Word prefixes only, as Spotlight itself matches: the index answers those at once, while "*word*" scans
+        // every name in the home folder (seconds on a big one).
+        var parts = words.map { word in #"kMDItemFSName == "\#(escaped(word))*"cdw"# }
         if words.joined().count < 3 { parts.append(recentlyUsed(days: recentDays)) }
         return parts.map { "(" + $0 + ")" }.joined(separator: " && ")
     }

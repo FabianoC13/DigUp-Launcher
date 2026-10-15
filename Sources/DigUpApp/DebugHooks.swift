@@ -164,6 +164,20 @@ enum DebugHooks {
                 }
             }
         }
+        // -debugQueries "s|sa|saf": puts each query in the panel's field 0.4 s apart, as typing would (offscreen too),
+        // for the launcher's timing logs.
+        if let list = defaults.string(forKey: "debugQueries") {
+            let queries = list.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                app.panel.show()
+                for (index, query) in queries.enumerated() {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4 * Double(index)) { app.panel.query = query }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4 * Double(queries.count) + 1.5) {
+                    if defaults.bool(forKey: "debugQuit") { NSApp.terminate(nil) }
+                }
+            }
+        }
         if let text = defaults.string(forKey: "debugQuery") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 searchInPanel(text, app, snapshot: snapshotPath()) {

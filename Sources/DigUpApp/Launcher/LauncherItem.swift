@@ -11,17 +11,21 @@ struct LauncherQuery: Sendable {
     /// Lowercased, accents folded (`FuzzyMatch.normalize`).
     let normalized: String
 
+    /// Normalized once for every name it's matched against.
+    let fuzzy: FuzzyMatch.Query
+
     init(_ raw: String) {
         self.raw = raw
         text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        normalized = FuzzyMatch.normalize(text)
+        fuzzy = FuzzyMatch.Query(text)
+        normalized = fuzzy.normalized
     }
 
     var isEmpty: Bool { text.isEmpty }
 
     /// How well `name` (or one of its `keywords`) matches what was typed: 0…1, nil for no match.
     func match(_ name: String, keywords: [String] = []) -> Double? {
-        FuzzyMatch.best(text, name: name, keywords: keywords)
+        FuzzyMatch.best(fuzzy, name: name, keywords: keywords)
     }
 }
 

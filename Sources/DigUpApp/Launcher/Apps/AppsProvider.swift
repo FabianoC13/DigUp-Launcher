@@ -47,7 +47,27 @@ final class AppsProvider: LauncherProvider {
 
 /// The apps that are running now, by bundle path.
 enum AppsRunning {
+    /// Asking every running process for its bundle is a trip to Launch Services each (~10 ms in all, on every
+    /// keystroke): the answer is kept until an app launches or quits.
+    private static var cached: [String: NSRunningApplication]?
+    private static var observers: [NSObjectProtocol] = []
+
     static func byPath() -> [String: NSRunningApplication] {
+        if let cached { return cached }
+        if observers.isEmpty {
+            let center = NSWorkspace.shared.notificationCenter
+            for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+                observers.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                    MainActor.assumeIsolated { cached = nil }
+                })
+            }
+        }
+        let result = readRunning()
+        cached = result
+        return result
+    }
+
+    private static func readRunning() -> [String: NSRunningApplication] {
         var result: [String: NSRunningApplication] = [:]
         for app in NSWorkspace.shared.runningApplications where !app.isTerminated {
             guard let path = app.bundleURL?.path else { continue }

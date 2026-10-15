@@ -2,18 +2,17 @@ import AppKit
 import DigUpKit
 import SwiftUI
 
-/// The app's own colors, from its icon (moss tiles around an amber D, `Resources/AppIcon`): amber marks what DigUp
-/// finds (accent icons), moss is for brand moments (onboarding's glow and tiles); selection and controls follow the
-/// system accent color like any Mac app.
+/// The app's own colors: a dark blue theme. Deep blue marks what DigUp finds (accent icons), navy is for brand moments
+/// (onboarding's glow and tiles); selection and controls follow the system accent color like any Mac app.
 enum Brand {
-    static let amber = Color(red: 0.949, green: 0.635, blue: 0.165)    // #F2A22A, the D
-    static let ember = Color(red: 0.851, green: 0.482, blue: 0.102)    // #D97B1A, a deeper amber that holds up on white
-    static let moss = Color(red: 0.208, green: 0.400, blue: 0.322)     // #356652, the darkest tile
-    static let leaf = Color(red: 0.310, green: 0.502, blue: 0.345)     // #4F8058
-    static let sprout = Color(red: 0.635, green: 0.780, blue: 0.557)   // #A2C78E, a light tile
-    /// Accent icons: the D's amber.
+    static let amber = Color(red: 0.278, green: 0.451, blue: 0.890)    // #4773E3, the accent's light end
+    static let ember = Color(red: 0.122, green: 0.243, blue: 0.620)    // #1F3E9E, its deep end
+    static let moss = Color(red: 0.078, green: 0.141, blue: 0.333)     // #142455, the darkest navy
+    static let leaf = Color(red: 0.231, green: 0.373, blue: 0.753)     // #3B5FC0, readable on a dark panel too
+    static let sprout = Color(red: 0.561, green: 0.682, blue: 0.937)   // #8FAEEF, a light blue
+    /// Accent icons: deep blue.
     static let gradient = LinearGradient(colors: [amber, ember], startPoint: .top, endPoint: .bottom)
-    /// Tiles with a white symbol on them, like the icon's.
+    /// Tiles with a white symbol on them.
     static let tile = LinearGradient(colors: [leaf, moss], startPoint: .top, endPoint: .bottom)
     /// The soft glow behind onboarding's steps.
     static let wash = LinearGradient(colors: [sprout, leaf], startPoint: .topLeading, endPoint: .bottomTrailing)
