@@ -19,6 +19,8 @@ final class ClipboardStore {
     struct Settings: Codable, Equatable {
         var retention = ClipboardRetention.standard
         var paused = false
+        /// fn+1…fn+9 paste the 1st…9th most recent copy into the app in front, anywhere (`ClipboardNumberKeys`).
+        var numberKeys = true
         var ignoredApps = ClipboardHistoryRules.defaultIgnoredApps.map { IgnoredApp(bundleID: $0.bundleID, name: $0.name) }
 
         init() {}
@@ -28,6 +30,7 @@ final class ClipboardStore {
             let defaults = Settings()
             retention = (try? container.decodeIfPresent(ClipboardRetention.self, forKey: .retention)) ?? defaults.retention
             paused = try container.decodeIfPresent(Bool.self, forKey: .paused) ?? defaults.paused
+            numberKeys = try container.decodeIfPresent(Bool.self, forKey: .numberKeys) ?? defaults.numberKeys
             ignoredApps = try container.decodeIfPresent([IgnoredApp].self, forKey: .ignoredApps) ?? defaults.ignoredApps
         }
     }
@@ -39,6 +42,7 @@ final class ClipboardStore {
             guard settings != oldValue else { return }
             saveSettings()
             if settings.retention != oldValue.retention { prune() }
+            if settings.numberKeys != oldValue.numberKeys { ClipboardNumberKeys.shared.update() }
         }
     }
 
@@ -262,6 +266,9 @@ final class ClipboardStore {
     func ignoreCurrentPasteboard() {
         ownWrites[NSPasteboard.general.changeCount] = .some(nil)
     }
+
+    /// The entries in the order they were copied, newest first: what fn+1…fn+9 (and ⌘1…⌘9 in the list) count.
+    var byRecency: [ClipboardEntry] { entries.sorted { $0.copied > $1.copied } }
 
     /// Puts an entry back on the clipboard with all it had (RTF, HTML, PNG and TIFF, file URLs), or as plain text.
     /// False when its data is gone.

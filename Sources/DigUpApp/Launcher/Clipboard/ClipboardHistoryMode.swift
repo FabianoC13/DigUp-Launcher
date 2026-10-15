@@ -8,7 +8,7 @@ final class ClipboardHistoryMode: LauncherMode {
     let title = "Clipboard History"
     let placeholder = "Search what you copied… (try “images” or “links”)"
     let icon: LauncherIcon = .symbol("doc.on.clipboard")
-    var keysHint: String? { "↩ Paste   ⌘↩ Copy   ⌘K Actions" }
+    var keysHint: String? { "↩ Paste   ⌘↩ Copy   ⌥1–9 Paste   ⌘1–9 Copy   ⌘K Actions" }
     var statusHint: String? {
         if store.settings.paused { return "Recording paused" }
         let count = store.entries.count
@@ -31,25 +31,61 @@ final class ClipboardHistoryMode: LauncherMode {
         let now = Date()
         let search = ClipboardSearch(parsing: query.raw)
         var items: [LauncherItem] = []
+        // ⌘1…⌘9 / ⌥1…⌥9 (as in Maccy) and fn+1…fn+9 anywhere count copies newest first, pinned or not.
+        let numbers = Dictionary(uniqueKeysWithValues: store.byRecency.prefix(9).enumerated().map { ($1.id, $0 + 1) })
         for group in ClipboardHistoryRules.ordered(store.entries, now: now) {
             let section = LauncherSection.named(group.section.title, order: group.section.rawValue)
             for entry in group.entries
             where search.isEmpty || ClipboardHistoryRules.matches(entry, searchText: store.searchText(of: entry), search: search) {
-                items.append(item(for: entry, section: section, now: now))
+                items.append(item(for: entry, section: section, now: now, number: numbers[entry.id]))
             }
         }
         return items
     }
 
+    // MARK: Keys
+
+    /// Maccy's keys: ⌘1…⌘9 copy, ⌥1…⌥9 paste, ⌥⇧1…⌥⇧9 paste as plain text the nth newest copy; ⌥⌫ deletes the selected
+    /// entry.
+    func handle(_ event: NSEvent, query: String, context: LauncherContext) -> Bool {
+        let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
+        if event.keyCode == 51, flags == .option, let id = context.selectedItemID, id.hasPrefix("clip:") {
+            store.delete(String(id.dropFirst(5)))
+            context.refresh()
+            context.flash("Deleted")
+            return true
+        }
+        guard let number = ClipboardNumberKeys.digitKeys[Int64(event.keyCode)],
+              [.command, .option, [.option, .shift]].contains(flags) else { return false }
+        let recent = store.byRecency
+        guard recent.indices.contains(number - 1) else {
+            NSSound.beep()
+            return true
+        }
+        let entry = recent[number - 1]
+        guard store.write(entry, plainText: flags == [.option, .shift]) else {
+            Self.missing()
+            return true
+        }
+        if flags == .command {
+            context.hide()
+        } else {
+            context.pasteClipboard()
+        }
+        return true
+    }
+
     // MARK: Rows
 
-    private func item(for entry: ClipboardEntry, section: LauncherSection, now: Date) -> LauncherItem {
+    private func item(for entry: ClipboardEntry, section: LauncherSection, now: Date, number: Int?) -> LauncherItem {
         let when = ClipboardHistoryRules.relativeTime(entry.copied, now: now)
             ?? entry.copied.formatted(date: .abbreviated, time: .omitted)
         return LauncherItem(
             id: "clip:\(entry.id)", title: entry.title,
             subtitle: [entry.sourceName, when].compactMap { $0 }.joined(separator: " · "),
-            icon: icon(for: entry), accessory: entry.kind == .text ? nil : entry.kind.title,
+            icon: icon(for: entry),
+            accessory: [entry.kind == .text ? nil : entry.kind.title, number.map { "⌥\($0)" }].compactMap { $0 }
+                .joined(separator: "  "),
             section: section, score: 0.5,
             actions: actions(for: entry), detail: detail(for: entry), metadata: metadata(for: entry),
             tracksUsage: false)
@@ -164,7 +200,7 @@ final class ClipboardHistoryMode: LauncherMode {
         }
         actions += [
             LauncherAction(id: "pin", title: entry.pinned ? "Unpin" : "Pin", symbol: entry.pinned ? "pin.slash" : "pin",
-                           shortcut: LauncherShortcut("p", [.command, .shift]), keepsPanelOpen: true) { context in
+                           shortcut: LauncherShortcut("p", .option), keepsPanelOpen: true) { context in
                 store.togglePin(id)
                 context.refresh()
                 context.flash(store.entry(id)?.pinned == true ? "Pinned" : "Unpinned")

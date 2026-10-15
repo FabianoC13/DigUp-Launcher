@@ -13,6 +13,10 @@ struct ClipboardSettingsView: View {
                 Text(retention.title).tag(retention)
             }
         }
+        Toggle(isOn: $store.settings.numberKeys) {
+            Text("Paste recent copies with fn+1 … fn+9")
+            Text("Anywhere, without opening DigUp: fn+1 pastes your last copy, fn+2 the one before. Needs Accessibility.")
+        }
         Toggle(isOn: $store.settings.paused) {
             Text("Pause recording")
             Text("While paused, nothing you copy is added. Pinned and earlier entries stay.")

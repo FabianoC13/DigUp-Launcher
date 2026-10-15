@@ -1,12 +1,12 @@
 # DigUp's icon: "One space"
 
 Four tiles, for what DigUp searches (text, pictures, sound, video), around an amber D with the find glowing in it.
-Moss palette.
+Dark blue palette (navy, blues, a pale-blue D).
 
 - `appicon.svg`: the app icon (1024 × 1024, macOS icon grid). `../AppIcon.icns` holds it at 64 px and up.
 - `appicon-small.svg`: the same without the glyphs inside the tiles, which turn to noise when small. `../AppIcon.icns`
   holds it at 16 and 32 px.
-- `AppIcon.icon`: the same design as layers for macOS 26 and later (an Icon Composer document: a #13201A fill, the
+- `AppIcon.icon`: the same design as layers for macOS 26 and later (an Icon Composer document: a #0B1530 fill, the
   tiles, the D). `build.sh` compiles it into `Assets.car` with `actool`; `Info.plist`'s `CFBundleIconName` points at
   it. Without it macOS 26 draws the `.icns` shrunk inside a gray square. Older macOS uses the `.icns`
   (`CFBundleIconFile`; untested there).
@@ -18,5 +18,5 @@ To rebuild `AppIcon.icns` after editing a source: render both SVGs to an iconset
 from `appicon.svg`) with a renderer that draws SVG blur filters (a browser or WebKit; macOS's own SVG renderer drops
 the soft shadows), then `iconutil -c icns AppIcon.iconset -o ../AppIcon.icns`.
 
-Colors: tile #13201A; tiles #D5E6BB, #A2C78E, #64976B, #356652; the D #FFD166 → #F2A22A with a #13201A outline; the
-find #FFF6DA.
+Colors: tile #0B1530; tiles #CFDDFB, #94B4F0, #4F7DD6, #1E3E8C; the D #E6EEFF → #8FB0FF with a #0B1530 outline; the
+find #FFFFFF. Rendered with a WebKit snapshot (transparent background); qlmanage draws on white.

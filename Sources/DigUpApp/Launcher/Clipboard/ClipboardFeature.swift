@@ -24,6 +24,7 @@ enum ClipboardFeature: LauncherFeature {
             let watcher = ClipboardWatcher(store: store)
             watcher.start()
             Self.watcher = watcher
+            ClipboardNumberKeys.shared.update()
         }
         let timer = Timer(timeInterval: 3600, repeats: true) { _ in
             MainActor.assumeIsolated { ClipboardStore.shared.prune() }

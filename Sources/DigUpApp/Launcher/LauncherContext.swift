@@ -26,6 +26,9 @@ final class LauncherContext {
 
     var isPanelVisible: Bool { panel.isVisible }
 
+    /// The id of the selected row, when it's a launcher item.
+    var selectedItemID: String? { panel.selectedItem?.id }
+
     /// Hides the panel and gives the keyboard back to the app you came from.
     func hide() {
         panel.dismissForAction()

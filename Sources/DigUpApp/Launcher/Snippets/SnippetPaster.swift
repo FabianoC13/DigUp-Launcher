@@ -161,13 +161,13 @@ enum SnippetPaster {
     }
 
     /// Everything on the clipboard, every type of every item, to put back later.
-    private static func savedItems() -> [[(NSPasteboard.PasteboardType, Data)]] {
+    static func savedItems() -> [[(NSPasteboard.PasteboardType, Data)]] {
         (NSPasteboard.general.pasteboardItems ?? []).map { item in
             item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
         }
     }
 
-    private static func restore(_ items: [[(NSPasteboard.PasteboardType, Data)]]) {
+    static func restore(_ items: [[(NSPasteboard.PasteboardType, Data)]]) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let restored = items.map { types -> NSPasteboardItem in

@@ -61,6 +61,17 @@ final class QuickAIMode: LauncherMode {
             deliver(primary: false)
             return true
         }
+        // ⌘C copies the answer straight away, unless part of the follow-up you're typing is selected (then that text,
+        // as anywhere).
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "c",
+           ((NSApp.keyWindow?.firstResponder as? NSTextView)?.selectedRange().length ?? 0) == 0 {
+            if chat.isBusy {
+                context.flash("Still answering: ⌘C copies it once it's done")
+            } else {
+                copyAnswer(close: false)
+            }
+            return true
+        }
         switch event.keyCode {
         case 125 where flags.isEmpty, 126 where flags.isEmpty:   // ↓ ↑ scroll the conversation
             scroller.scroll(by: event.keyCode == 125 ? 56 : -56)
@@ -109,9 +120,8 @@ final class QuickAIMode: LauncherMode {
         if chat.isBusy { return "⌘. Stop   ↑↓ Scroll   ⌘K Actions   Esc Back" }
         if chat.lastTurn?.failure != nil { return "⌘R Retry   ⌘N New Chat   ⌘K Actions" }
         guard chat.lastAnswer != nil else { return "↩ Ask   ⌘K Actions   Esc Back" }
-        let primary = primaryIsPaste ? "Paste" : "Copy"
-        let secondary = primaryIsPaste ? "Copy" : "Paste"
-        return "↩ \(primary)   ⌘↩ \(secondary)   ⌘R Regenerate   ⌘N New Chat   ⌘K Actions"
+        let paste = primaryIsPaste ? "↩ Paste" : "⌘↩ Paste"
+        return "⌘C Copy   \(paste)   ⌘R Regenerate   ⌘N New Chat   ⌘K Actions"
     }
 
     var statusHint: String? {
