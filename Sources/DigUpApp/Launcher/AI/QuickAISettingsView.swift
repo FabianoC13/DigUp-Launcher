@@ -58,13 +58,13 @@ struct QuickAISettingsView: View {
             systemPromptRow
             historyRow
         }
-        .onAppear(perform: refreshKeyState)
+        .onAppear(perform: appeared)
         .onChange(of: preferences.providerID) { _, _ in
             keyField = ""
             keyError = nil
             test = nil
             modelsNote = nil
-            refreshKeyState()
+            appeared()
         }
     }
 
@@ -103,6 +103,13 @@ struct QuickAISettingsView: View {
         } message: {
             Text("Quick AI can't ask \(preset.name) until you add a key again.")
         }
+    }
+
+    /// The key's state, and the provider's model list when the key is already in memory (asking the Keychain here
+    /// could put up its prompt just for opening Settings).
+    private func appeared() {
+        refreshKeyState()
+        if preferences.knownModels[preset.id] == nil, QuickAIKeys.shared.cached(preset.id) != nil { refreshModels() }
     }
 
     private func refreshKeyState() {
