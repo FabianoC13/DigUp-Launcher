@@ -5,7 +5,7 @@ import Observation
 import SwiftUI
 
 /// One event as the launcher shows it, copied out of EventKit (off the main thread).
-nonisolated struct ScheduleEvent: Identifiable, Sendable {
+nonisolated struct ScheduleEvent: Identifiable, Equatable, Sendable {
     /// The event's identifier and its start: occurrences of a repeating event share the identifier.
     let id: String
     let eventID: String
@@ -101,7 +101,7 @@ final class ScheduleStore {
             eventStore = EKEventStore()   // a store made before access was granted can stay empty
             reload()
         }
-        launcher?.panel?.context.refresh()
+        if let context = launcher?.panel?.context, context.isPanelVisible { context.refresh() }
     }
 
     static func openPrivacySettings() {
@@ -134,8 +134,11 @@ final class ScheduleStore {
                 Self.fetch(store, hidden: hidden, now: Date())
             }.value
             guard !Task.isCancelled else { return }
+            let changed = found != events || !loaded
             events = found
             loaded = true
+            // A list on screen (My Schedule, "Join …") shows the new events.
+            if changed, let context = launcher?.panel?.context, context.isPanelVisible { context.refresh() }
         }
     }
 
