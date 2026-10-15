@@ -81,11 +81,10 @@ private struct StealthSettingsView: View {
 
     var body: some View {
         Toggle(isOn: $appearance.stealth) {
-            Text("Stealth mode")
-            Text("A fainter panel that's harder to notice. Find it as “stealth” in the panel to switch quickly, or "
-                 + "give that command a hotkey (⌘K → Set Hotkey…).")
+            Text("Stealth mode   fn S")
+            Text("A fainter panel that's harder to notice. fn+S turns it on and off anywhere (needs Accessibility).")
         }
-        LabeledContent("Whole panel") {
+        LabeledContent("Visibility (whole panel)") {
             Slider(value: $appearance.stealthLook.opacity, in: 0.15...1)
             Text("\(Int(appearance.stealthLook.opacity * 100))%").monospacedDigit().frame(width: 40, alignment: .trailing)
         }

@@ -19,6 +19,8 @@ struct QuickAIConversationView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                QuickAICreditsBar()
+                    .onAppear { QuickAICredits.shared.refresh() }
                 if !chat.pendingImages.isEmpty {
                     QuickAIPendingImagesView(chat: chat)
                 }
@@ -37,6 +39,10 @@ struct QuickAIConversationView: View {
         }
         .onChange(of: chat.tick) { _, _ in
             scroller.follow()
+        }
+        // After an answer, what it cost shows.
+        .onChange(of: chat.isBusy) { _, busy in
+            if !busy { QuickAICredits.shared.refresh() }
         }
     }
 }

@@ -3,6 +3,7 @@ import Foundation
 /// Every launcher feature, in the order their providers are asked. Each lives in its own folder under Launcher/.
 enum LauncherFeatures {
     static let all: [any LauncherFeature.Type] = [
+        StealthFeature.self,       // Stealth/: Normal and Stealth looks for the panel (fn+S), tuned on a localhost page
         AppsFeature.self,          // Apps/: applications, System Settings panes, running apps, files by name
         CalculatorFeature.self,    // Calculator/: math, units, currency, time zones, dates, definitions
         SystemFeature.self,        // System/: lock, sleep, dark mode, trash, volume…
@@ -15,6 +16,5 @@ enum LauncherFeatures {
         NotesFeature.self,         // Notes/: floating notes
         FocusFeature.self,         // Focus/: distraction blocking
         ScriptsFeature.self,       // Scripts/: script commands
-        StealthFeature.self,       // Stealth/: Normal and Stealth looks for the panel, tuned on a localhost page
     ]
 }

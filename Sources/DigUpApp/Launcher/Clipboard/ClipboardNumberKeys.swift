@@ -1,8 +1,8 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// fn+1…fn+9, anywhere: pastes the 1st…9th most recent copy in Clipboard History into the app in front, without
-/// opening the panel. The numbers stay put: pasting this way doesn't move the entry to the top, and the clipboard is
+/// DigUp's fn shortcuts, anywhere: fn+1…fn+9 paste the 1st…9th most recent copy in Clipboard History into the app in
+/// front without opening the panel (when that setting is on), and fn+S turns Stealth mode on and off. The numbers stay put: pasting this way doesn't move the entry to the top, and the clipboard is
 /// put back as it was afterwards, so ⌘V still pastes your last copy.
 ///
 /// An event tap that can swallow keys needs Accessibility; until it's allowed, this checks again every few seconds.
@@ -21,9 +21,25 @@ final class ClipboardNumberKeys {
     private var source: CFRunLoopSource?
     private var retryTimer: Timer?
 
-    /// Follows the setting: on when it's on (and Accessibility allows), off otherwise.
+    /// fn+S, which turns Stealth mode on and off.
+    nonisolated static let stealthKey = Int64(kVK_ANSI_S)
+
+    /// The tap runs whenever Accessibility allows (fn+S is always on); fn+1…fn+9 follow their setting.
     func update() {
-        if ClipboardStore.shared.settings.numberKeys { start() } else { stop() }
+        start()
+    }
+
+    /// fn+S: Stealth mode on or off, said in the panel when it's open, else in a bubble.
+    fileprivate func toggleStealth() {
+        let appearance = PanelAppearance.shared
+        appearance.stealth.toggle()
+        let message = appearance.stealth ? "Stealth mode on" : "Normal mode"
+        if let panel = launcher?.panel, panel.isVisible {
+            panel.flashNote(message)
+        } else {
+            SystemHUD.show(message, symbol: appearance.stealth ? "eye.slash" : "eye")
+        }
+        log("panel: \(message.lowercased()) (fn+S)")
     }
 
     private func start() {
@@ -47,7 +63,7 @@ final class ClipboardNumberKeys {
         self.source = source
         retryTimer?.invalidate()
         retryTimer = nil
-        log("clipboard: fn+1…fn+9 paste from the history")
+        log("fn keys: fn+S for Stealth, fn+1…fn+9 paste from the history")
     }
 
     func stop() {
@@ -64,7 +80,7 @@ final class ClipboardNumberKeys {
         let timer = Timer(timeInterval: 3, repeats: true) { _ in
             MainActor.assumeIsolated {
                 let keys = ClipboardNumberKeys.shared
-                guard ClipboardStore.shared.settings.numberKeys, Accessibility.isTrusted() else { return }
+                guard Accessibility.isTrusted() else { return }
                 keys.retryTimer?.invalidate()
                 keys.retryTimer = nil
                 keys.start()
@@ -121,11 +137,19 @@ private nonisolated func numberKeysCallback(proxy: CGEventTapProxy, type: CGEven
     guard type == .keyDown else { return Unmanaged.passUnretained(event) }
     let flags = event.flags
     let others: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
-    guard flags.contains(.maskSecondaryFn), flags.intersection(others).isEmpty,
-          event.getIntegerValueField(.keyboardEventAutorepeat) == 0,
-          let number = ClipboardNumberKeys.digitKeys[event.getIntegerValueField(.keyboardEventKeycode)] else {
+    guard flags.contains(.maskSecondaryFn), flags.intersection(others).isEmpty else {
         return Unmanaged.passUnretained(event)
     }
-    MainActor.assumeIsolated { keys.paste(number) }
+    let code = event.getIntegerValueField(.keyboardEventKeycode)
+    let repeated = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+    if code == ClipboardNumberKeys.stealthKey {
+        if !repeated { MainActor.assumeIsolated { keys.toggleStealth() } }
+        return nil
+    }
+    guard let number = ClipboardNumberKeys.digitKeys[code],
+          MainActor.assumeIsolated({ ClipboardStore.shared.settings.numberKeys }) else {
+        return Unmanaged.passUnretained(event)
+    }
+    if !repeated { MainActor.assumeIsolated { keys.paste(number) } }
     return nil
 }

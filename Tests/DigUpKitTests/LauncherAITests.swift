@@ -578,3 +578,37 @@ import Testing
         #expect(AIProviderPreset.openAI.model(forImages: "gpt-x") == "gpt-x")
     }
 }
+
+@Suite struct LauncherAICreditsTests {
+    @Test func parsesDeepSeekBalance() throws {
+        let json = #"{"is_available":true,"balance_infos":[{"currency":"USD","total_balance":"1.99","granted_balance":"0.00","topped_up_balance":"1.99"}]}"#
+        let found = try #require(AICredits.deepSeekBalance(Data(json.utf8)))
+        #expect(found.balance == 1.99 && found.currency == "USD")
+    }
+
+    @Test func parsesOpenRouterCredits() throws {
+        let json = #"{"data":{"total_credits":10,"total_usage":2.5}}"#
+        let credits = try #require(AICredits.openRouter(Data(json.utf8)))
+        #expect(credits.remaining == 7.5 && credits.total == 10 && credits.percentText == "75%")
+    }
+
+    @Test func referenceIsTheTopUp() {
+        #expect(AICredits.roundUp(1.99) == 2)
+        #expect(AICredits.roundUp(4.2) == 5)
+        #expect(AICredits.roundUp(12) == 20)
+        #expect(AICredits.roundUp(0.37) == 0.5)
+        // First time: a round amount above the balance; spending keeps it; a top-up raises it; a set amount wins.
+        #expect(AICredits.reference(balance: 1.99, previous: nil, set: nil) == 2)
+        #expect(AICredits.reference(balance: 1.20, previous: 2, set: nil) == 2)
+        #expect(AICredits.reference(balance: 6.20, previous: 2, set: nil) == 10)
+        #expect(AICredits.reference(balance: 1.20, previous: 2, set: 5) == 5)
+    }
+
+    @Test func balanceURLs() {
+        #expect(AICredits.balanceURL(providerID: "deepseek", baseURL: "https://api.deepseek.com")?.absoluteString
+            == "https://api.deepseek.com/user/balance")
+        #expect(AICredits.balanceURL(providerID: "openrouter", baseURL: "https://openrouter.ai/api/v1")?.absoluteString
+            == "https://openrouter.ai/api/v1/credits")
+        #expect(AICredits.balanceURL(providerID: "openai", baseURL: "https://api.openai.com/v1") == nil)
+    }
+}

@@ -16,7 +16,7 @@ final class PanelAppearance {
         var blur: Bool
 
         static let normal = Look(opacity: 1, tint: 0.75, blur: true)
-        static let stealthDefault = Look(opacity: 0.55, tint: 0.15, blur: false)
+        static let stealthDefault = Look(opacity: 0.15, tint: 0, blur: false)
     }
 
     var stealth: Bool {

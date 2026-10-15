@@ -105,10 +105,54 @@ final class QuickAIProvider: LauncherProvider {
                 items.append(scored(Self.item(command), score))
             }
         }
+        if let score = query.match("AI Credits", keywords: ["credits", "balance", "usage", "deepseek balance"]) {
+            await QuickAICredits.shared.loaded()
+            items.append(scored(Self.creditsItem(), score))
+        }
         return items
     }
 
+    /// "AI Credits: 99%": what's left of the API credit, with the bar in the preview.
+    private static func creditsItem() -> LauncherItem {
+        let credits = QuickAICredits.shared
+        credits.refresh()
+        let title: String
+        let subtitle: String
+        switch credits.state {
+        case .loaded(let value, _):
+            title = "AI Credits: \(value.percentText) left"
+            subtitle = "\(value.amountText) · \(providerName)"
+        case .unsupported:
+            title = "AI Credits"
+            subtitle = "\(providerName) doesn't say how much credit is left"
+        case .failed(let message):
+            title = "AI Credits"
+            subtitle = message
+        case .unknown:
+            title = "AI Credits"
+            subtitle = "Checking \(providerName)…"
+        }
+        return LauncherItem(
+            id: "ai:credits", title: title, subtitle: subtitle, icon: .symbol("gauge.with.dots.needle.50percent"),
+            accessory: "Quick AI",
+            actions: [LauncherAction(id: "refresh", title: "Check Again", symbol: "arrow.clockwise",
+                                     keepsPanelOpen: true) { context in
+                QuickAICredits.shared.refresh(force: true)
+                try? await Task.sleep(for: .seconds(1.5))
+                context.refresh()
+            }],
+            detail: .custom(AnyView(VStack(spacing: 14) {
+                Spacer(minLength: 40)
+                QuickAICreditsBar()
+                Text("DeepSeek only says the balance: 100% is the amount you topped up, guessed from it until you set it "
+                     + "in Settings → Launcher → Quick AI.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
+            }.frame(maxWidth: .infinity))))
+    }
+
     func item(id: String) async -> LauncherItem? {
+        if id == "ai:credits" { return Self.creditsItem() }
         if let base = Self.baseItems.first(where: { $0.item.id == id }) { return base.item }
         guard id.hasPrefix(Self.commandPrefix),
               let command = AICommand(rawValue: String(id.dropFirst(Self.commandPrefix.count))) else { return nil }

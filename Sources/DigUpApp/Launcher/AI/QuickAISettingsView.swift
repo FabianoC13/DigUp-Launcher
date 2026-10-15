@@ -39,6 +39,20 @@ struct QuickAISettingsView: View {
             keyRow
             modelRow
             connectionRow
+            if AICredits.balanceURL(providerID: preset.id, baseURL: preferences.baseURL(for: preset)) != nil {
+                LabeledContent("Credits left") {
+                    QuickAICreditsBar()
+                        .onAppear { QuickAICredits.shared.refresh(force: true) }
+                }
+                if preset.id == AIProviderPreset.deepSeek.id {
+                    TextField(value: Binding(get: { QuickAICredits.shared.budget(for: preset.id) },
+                                             set: { QuickAICredits.shared.setBudget($0, for: preset.id) }),
+                              format: .number, prompt: Text("guessed from the balance")) {
+                        Text("Amount you topped up (USD)")
+                        Text("What 100% is. DeepSeek only reports the balance.")
+                    }
+                }
+            }
             if preset.thinkingSwitch {
                 Toggle(isOn: $preferences.thinking) {
                     Text("Think before answering")
