@@ -12,16 +12,13 @@ enum SnippetPaster {
     /// How long the app gets to read the pasted text before the clipboard is put back.
     static let restoreDelay: Duration = .milliseconds(350)
 
-    /// Pastes `snippet` into `target`. With `deleteCount` (text expansion) that many characters before the caret go
-    /// first (the keyword); `suffix` is typed after it (the space that triggered it). False when nothing was pasted.
+    /// Pastes `snippet` into `target`. With `deleteCount` (text expansion) that many characters before the caret are
+    /// deleted first (the keyword); `suffix` is typed after it (the space that triggered it). False when nothing was
+    /// pasted.
     @discardableResult
     static func paste(_ snippet: Snippet, into target: NSRunningApplication?, deleteCount: Int = 0,
                       suffix: String = "") async -> Bool {
         let store = SnippetStore.shared
-        if deleteCount > 0 {
-            post(CGKeyCode(kVK_Delete), count: deleteCount)
-            try? await Task.sleep(for: .milliseconds(30))
-        }
         var answers: [String: String] = [:]
         let arguments = SnippetPlaceholders.arguments(in: snippet.text) { store.text(named: $0) }
         if !arguments.isEmpty {
@@ -31,6 +28,11 @@ enum SnippetPaster {
         if let target, NSWorkspace.shared.frontmostApplication?.processIdentifier != target.processIdentifier {
             target.activate()
             try? await Task.sleep(for: .milliseconds(150))
+        }
+        // The keyword goes once the arguments are in (a cancelled dialog leaves it as typed).
+        if deleteCount > 0, Accessibility.isTrusted() {
+            post(CGKeyCode(kVK_Delete), count: deleteCount)
+            try? await Task.sleep(for: .milliseconds(30))
         }
         let expansion = SnippetPlaceholders.expand(snippet.text, values: values(arguments: answers))
         let text = expansion.text + suffix
