@@ -106,3 +106,37 @@ import Testing
         #expect(!LauncherVolumeInfo(name: "Unknown", isLocal: nil, isInternal: nil).shouldEject)
     }
 }
+
+@Suite struct LauncherSystemRequestTests {
+    @Test func readsPmsetSettings() {
+        let output = """
+            System-wide power settings:
+            Currently in use:
+             standby              1
+             Sleep On Power Button 1
+             sleep                1 (sleep prevented by coreaudiod)
+             lowpowermode         0
+             displaysleep         10
+            """
+        #expect(LauncherSystemOutput.pmsetSetting("lowpowermode", in: output) == 0)
+        #expect(LauncherSystemOutput.pmsetSetting("sleep", in: output) == 1)
+        #expect(LauncherSystemOutput.pmsetSetting("displaysleep", in: output) == 10)
+        #expect(LauncherSystemOutput.pmsetSetting("Sleep On Power Button", in: output) == 1)
+        #expect(LauncherSystemOutput.pmsetSetting("powermode", in: output) == nil)
+        #expect(LauncherSystemOutput.pmsetSetting("lowpowermode", in: "") == nil)
+    }
+
+    @Test func typedVolumeLevels() {
+        #expect(LauncherVolumeSettings.requestedLevel("volume 30") == 30)
+        #expect(LauncherVolumeSettings.requestedLevel("Set Volume to 30%") == 30)
+        #expect(LauncherVolumeSettings.requestedLevel("vol 7 %") == 7)
+        #expect(LauncherVolumeSettings.requestedLevel("set volume 100") == 100)
+        #expect(LauncherVolumeSettings.requestedLevel("volume 0") == 0)
+        #expect(LauncherVolumeSettings.requestedLevel("volume 130") == nil)
+        #expect(LauncherVolumeSettings.requestedLevel("volume") == nil)
+        #expect(LauncherVolumeSettings.requestedLevel("30") == nil)
+        #expect(LauncherVolumeSettings.requestedLevel("vo 30") == nil)
+        #expect(LauncherVolumeSettings.requestedLevel("volume up 30") == nil)
+        #expect(LauncherVolumeSettings.requestedLevel("timer 30") == nil)
+    }
+}

@@ -253,3 +253,56 @@ private func frame(_ layout: LauncherWindowLayout, window: LauncherWindowRect = 
         #expect(!LauncherMenuPath.shouldWalk(menuIndex: 3, depth: 5))
     }
 }
+
+@Suite struct LauncherWindowsCyclingTests {
+    private func cycled(_ layout: LauncherWindowLayout, _ step: Int, screen: LauncherWindowRect = main,
+                        gap: Double = 0) -> LauncherWindowRect {
+        LauncherWindowGeometry.cycledFrame(for: layout, step: step, window: rect(100, 100, 600, 400), screen: screen,
+                                           gap: gap)
+    }
+
+    @Test func theFirstStepIsTheHalf() {
+        for layout in [LauncherWindowLayout.leftHalf, .rightHalf, .topHalf, .bottomHalf] {
+            #expect(cycled(layout, 0) == frame(layout))
+            #expect(cycled(layout, 0, gap: 8) == frame(layout, gap: 8))
+        }
+    }
+
+    @Test func halvesGoToTwoThirdsThenAThirdThenRoundAgain() {
+        #expect(cycled(.leftHalf, 1) == rect(0, 25, 960, 825))
+        #expect(cycled(.leftHalf, 2) == rect(0, 25, 480, 825))
+        #expect(cycled(.leftHalf, 3) == cycled(.leftHalf, 0))
+        #expect(cycled(.rightHalf, 1) == rect(480, 25, 960, 825))
+        #expect(cycled(.rightHalf, 2) == rect(960, 25, 480, 825))
+        // 825 / 6 = 137.5 points a row.
+        #expect(cycled(.topHalf, 1) == rect(0, 25, 1440, 550))
+        #expect(cycled(.bottomHalf, 2) == rect(0, 25 + 550, 1440, 275))
+    }
+
+    @Test func leftAndRightStayColumnsOnAPortraitDisplay() {
+        let portrait = rect(0, 0, 1080, 1920)
+        #expect(cycled(.leftHalf, 1, screen: portrait) == rect(0, 0, 720, 1920))
+        #expect(cycled(.topHalf, 2, screen: portrait) == rect(0, 0, 1080, 640))
+    }
+
+    @Test func otherLayoutsDontCycle() {
+        #expect(!LauncherWindowLayout.maximize.cycles)
+        #expect(!LauncherWindowLayout.firstThird.cycles)
+        #expect(cycled(.maximize, 2) == frame(.maximize))
+        #expect(LauncherWindowGeometry.cycleStep(of: frame(.maximize), for: .maximize, screen: main) == nil)
+    }
+
+    @Test func findsTheStepAWindowIsAtAndTheNextOne() {
+        let half = cycled(.leftHalf, 0, gap: 6)
+        #expect(LauncherWindowGeometry.cycleStep(of: half, for: .leftHalf, screen: main, gap: 6) == 0)
+        // An app that rounds its size to a step of its own is still in place.
+        let nearlyTwoThirds = rect(0 + 6, 25 + 6, 960 - 6 - 3 - 1, 825 - 12 + 1)
+        #expect(LauncherWindowGeometry.cycleStep(of: nearlyTwoThirds, for: .leftHalf, screen: main, gap: 6) == 1)
+        #expect(LauncherWindowGeometry.cycleStep(of: rect(100, 100, 600, 400), for: .leftHalf, screen: main) == nil)
+        // The left half isn't a step of Right Half's cycle.
+        #expect(LauncherWindowGeometry.cycleStep(of: half, for: .rightHalf, screen: main, gap: 6) == nil)
+        #expect(LauncherWindowGeometry.nextCycleStep(after: nil) == 0)
+        #expect(LauncherWindowGeometry.nextCycleStep(after: 0) == 1)
+        #expect(LauncherWindowGeometry.nextCycleStep(after: 2) == 0)
+    }
+}

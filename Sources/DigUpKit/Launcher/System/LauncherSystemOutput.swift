@@ -62,6 +62,21 @@ public enum LauncherSystemOutput {
         }
     }
 
+    /// A numeric setting from `pmset -g`'s "Currently in use" list (" lowpowermode         0" → 0); nil when this Mac
+    /// doesn't list it (no Low Power Mode before macOS 12, or on some desktops).
+    public static func pmsetSetting(_ name: String, in output: String) -> Int? {
+        for line in output.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix(name) else { continue }
+            let rest = trimmed.dropFirst(name.count)
+            // "lowpowermode 0", not "lowpowermodeX 0".
+            guard let first = rest.first, first == " " || first == "\t" else { continue }
+            let value = rest.trimmingCharacters(in: .whitespaces).prefix { !$0.isWhitespace }
+            if let number = Int(value) { return number }
+        }
+        return nil
+    }
+
     /// "Safari, Mail and Notes", or "Safari, Mail, Notes and 4 more" past `limit` names.
     public static func list(_ names: [String], limit: Int = 6) -> String {
         guard names.count > 1 else { return names.first ?? "" }
@@ -108,6 +123,20 @@ public struct LauncherVolumeSettings: Equatable, Sendable {
     /// The output volume after a step up or down (`step` points), kept within 0…100.
     public static func stepped(_ volume: Int, by step: Int) -> Int {
         min(100, max(0, volume + step))
+    }
+
+    /// The level in a typed "set volume" request: "volume 30", "set volume to 30%", "vol 30 %", "volume 0"; nil when
+    /// the text isn't one, or the level isn't within 0…100.
+    public static func requestedLevel(_ text: String) -> Int? {
+        var words = text.lowercased()
+            .replacingOccurrences(of: "%", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+        guard words.count >= 2, let level = Int(words.removeLast()), (0...100).contains(level) else { return nil }
+        if words.first == "set" { words.removeFirst() }
+        if words.last == "to" { words.removeLast() }
+        guard words.count == 1, let word = words.first, word.count >= 3, "volume".hasPrefix(word) else { return nil }
+        return level
     }
 }
 
