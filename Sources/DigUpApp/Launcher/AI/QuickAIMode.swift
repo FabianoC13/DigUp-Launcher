@@ -50,8 +50,10 @@ final class QuickAIMode: LauncherMode {
         let isReturn = event.keyCode == 36 || event.keyCode == 76
         if isReturn, flags.isEmpty {
             let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.isEmpty {
+            if text.isEmpty, chat.pendingImages.isEmpty {
                 deliver(primary: true)
+            } else if text.isEmpty, !chat.pendingImages.isEmpty {
+                send("")
             } else {
                 send(text)
             }
@@ -116,10 +118,12 @@ final class QuickAIMode: LauncherMode {
 
     var keysHint: String? {
         let typed = !(context?.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-        if typed { return chat.turns.isEmpty ? "↩ Ask   ⌘K Actions" : "↩ Send Follow-up   ⌘K Actions" }
+        if typed || !chat.pendingImages.isEmpty {
+            return chat.turns.isEmpty ? "↩ Ask   ⌘K Actions" : "↩ Send Follow-up   ⌘K Actions"
+        }
         if chat.isBusy { return "⌘. Stop   ↑↓ Scroll   ⌘K Actions   Esc Back" }
         if chat.lastTurn?.failure != nil { return "⌘R Retry   ⌘N New Chat   ⌘K Actions" }
-        guard chat.lastAnswer != nil else { return "↩ Ask   ⌘K Actions   Esc Back" }
+        guard chat.lastAnswer != nil else { return "↩ Ask   Drop an image   ⌘K Actions   Esc Back" }
         let paste = primaryIsPaste ? "↩ Paste" : "⌘↩ Paste"
         return "⌘C Copy   \(paste)   ⌘R Regenerate   ⌘N New Chat   ⌘K Actions"
     }

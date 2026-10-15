@@ -30,6 +30,11 @@ final class QuickAITurn: Identifiable {
     /// A line above the question: "Fix Spelling and Grammar · selected in Notes", "About 412 characters selected in
     /// Safari".
     let label: String?
+    /// Images sent with this question (OpenAI-compatible `image_url` parts). Kept in memory for follow-ups; not
+    /// written to the chat history file (base64 would balloon it).
+    let images: [AIImageAttachment]
+    /// Local previews for the conversation UI (same order as `images`).
+    @ObservationIgnored let imagePreviews: [NSImage]
     var answer = ""
     var reasoning = ""
     var model: String
@@ -43,12 +48,15 @@ final class QuickAITurn: Identifiable {
     /// Show the rewrite as its changes to the original.
     var showsChanges = false
 
-    init(question: String, shown: String? = nil, original: String? = nil, label: String? = nil, model: String,
+    init(question: String, shown: String? = nil, original: String? = nil, label: String? = nil,
+         images: [AIImageAttachment] = [], imagePreviews: [NSImage] = [], model: String,
          phase: Phase = .readingKey, date: Date = Date()) {
         self.question = question
         self.shown = shown
         self.original = original
         self.label = label
+        self.images = images
+        self.imagePreviews = imagePreviews
         self.model = model
         self.phase = phase
         self.date = date
@@ -87,6 +95,8 @@ final class QuickAIChat {
     private(set) var source: String?
     /// Text the next question is about (Ask AI About Selected Text), and where it came from ("selected in Safari").
     private(set) var attachment: (text: String, source: String)?
+    /// Images dropped or pasted onto the field, waiting for the next ↩.
+    private(set) var pendingImages: [QuickAIPendingImage] = []
     /// A word for the empty chat: what's happening before the first question ("Reading the selected text…"), or why
     /// there is none ("Select some text first…").
     var notice: String?
@@ -131,10 +141,15 @@ final class QuickAIChat {
 
     // MARK: Asking
 
-    /// Sends a question (a follow-up when the chat has turns).
+    /// Sends a question (a follow-up when the chat has turns). Pending dropped images go with it and are cleared.
     func ask(_ question: String, shown: String? = nil, original: String? = nil, label: String? = nil) {
         var text = question.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let pending = pendingImages
+        pendingImages = []
+        if text.isEmpty, pending.isEmpty { return }
+        if text.isEmpty {
+            text = pending.count == 1 ? "What's in this image?" : "What's in these images?"
+        }
         if isBusy { stop() }
         notice = nil
         var shown = shown
@@ -146,11 +161,34 @@ final class QuickAIChat {
             text = AIConversation.question(text, about: attachment.text)
             self.attachment = nil
         }
-        let turn = QuickAITurn(question: text, shown: shown, original: original, label: label, model: model)
+        let turn = QuickAITurn(question: text, shown: shown, original: original, label: label,
+                               images: pending.map(\.attachment), imagePreviews: pending.map(\.preview),
+                               model: model)
         turns.append(turn)
         lastActivity = Date()
         tick += 1
         run(turn)
+    }
+
+    /// Queues images for the next question (drop or paste onto the search field). Same file twice is kept once.
+    func attachImages(_ images: [QuickAIPendingImage]) {
+        guard !images.isEmpty else { return }
+        var seen = Set(pendingImages.map(\.attachment.dataURL))
+        for image in images where seen.insert(image.attachment.dataURL).inserted {
+            pendingImages.append(image)
+        }
+        tick += 1
+    }
+
+    func removePendingImage(_ id: UUID) {
+        pendingImages.removeAll { $0.id == id }
+        tick += 1
+    }
+
+    func clearPendingImages() {
+        guard !pendingImages.isEmpty else { return }
+        pendingImages = []
+        tick += 1
     }
 
     /// The last question again (⌘R), with `model` if given (⇧⌘R, "Regenerate with…").
@@ -216,6 +254,7 @@ final class QuickAIChat {
         pending = nil
         if saving { save() }
         attachment = nil
+        pendingImages = []
         id = UUID()
         turns = []
         self.command = command
@@ -271,8 +310,11 @@ final class QuickAIChat {
         task?.cancel()
         pending = nil
         reopenWhenKeyArrives = false
-        let history = turns.prefix { $0 !== turn }.map { (question: $0.question, answer: $0.answer) }
-        let messages = AIConversation.messages(system: systemPrompt, history: Array(history), question: turn.question)
+        let history = turns.prefix { $0 !== turn }.map {
+            (question: $0.question, answer: $0.answer, images: $0.images)
+        }
+        let messages = AIConversation.messages(system: systemPrompt, history: Array(history),
+                                               question: turn.question, images: turn.images)
         let preset = preferences.provider
         let request = AIChatRequest(model: turn.model, messages: messages, stream: true,
                                     temperature: preferences.creativity,

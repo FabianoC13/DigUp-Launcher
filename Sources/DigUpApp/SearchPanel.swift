@@ -836,6 +836,8 @@ final class SearchPanelController {
 final class SearchPanelWindow: NSPanel, QLPreviewPanelDataSource {
     /// What Space / ⌘Y previews.
     var previewURL: URL?
+    /// Shared field editor so image drops/pastes on the search field attach files instead of pasting paths.
+    private var digUpFieldEditor: DigUpFieldEditor?
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: SearchPanelController.width,
@@ -854,6 +856,22 @@ final class SearchPanelWindow: NSPanel, QLPreviewPanelDataSource {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func fieldEditor(_ createFlag: Bool, for object: Any?) -> NSText? {
+        guard let field = object as? FocusReportingField else {
+            return super.fieldEditor(createFlag, for: object)
+        }
+        if digUpFieldEditor == nil {
+            let editor = DigUpFieldEditor(frame: .zero)
+            editor.isFieldEditor = true
+            editor.registerForDraggedTypes([.fileURL, .png, .tiff,
+                                           NSPasteboard.PasteboardType("public.jpeg"),
+                                           NSPasteboard.PasteboardType("public.heic")])
+            digUpFieldEditor = editor
+        }
+        digUpFieldEditor?.digUpField = field
+        return digUpFieldEditor
+    }
 
     // Quick Look asks the responder chain who controls it; the panel does. (These come from a nonisolated NSObject
     // category; Quick Look calls them on the main thread.)

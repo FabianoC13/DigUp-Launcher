@@ -26,6 +26,9 @@ final class LauncherContext {
 
     var isPanelVisible: Bool { panel.isVisible }
 
+    /// The mode currently covering the root search (Quick AI, Clipboard History…), if any.
+    var mode: (any LauncherMode)? { panel.mode }
+
     /// The id of the selected row, when it's a launcher item.
     var selectedItemID: String? { panel.selectedItem?.id }
 
