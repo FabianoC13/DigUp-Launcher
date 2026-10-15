@@ -475,3 +475,31 @@ import Testing
         #expect(AIWordDiff.runs(from: long, to: "short") == nil)
     }
 }
+
+@Suite struct LauncherAIWatchdogTests {
+    private func verdict(_ now: Double, headers: Double? = nil, last: Double? = nil) -> AIFailure? {
+        AIWatchdog.failure(now: now, headers: headers, lastEvent: last, provider: "DeepSeek")
+    }
+
+    @Test func waitsThirtySecondsForTheServer() {
+        #expect(verdict(29) == nil)
+        #expect(verdict(31) == .timedOut(provider: "DeepSeek", seconds: 30))
+    }
+
+    @Test func keepAlivesAloneStallAfterAMinute() {
+        // Headers at 12 s, then only ": keep-alive" comments (which make no events).
+        #expect(verdict(70, headers: 12) == nil)
+        #expect(verdict(73, headers: 12) == .stalled(provider: "DeepSeek", seconds: 60, started: false))
+    }
+
+    @Test func aStartedAnswerMayPauseLonger() {
+        #expect(verdict(200, headers: 1, last: 100) == nil)
+        #expect(verdict(221, headers: 1, last: 100) == .stalled(provider: "DeepSeek", seconds: 120, started: true))
+        #expect(AIFailure.stalled(provider: "DeepSeek", seconds: 60, started: false).message.contains("overloaded"))
+    }
+
+    @Test func keepAliveCommentsMakeNoEvents() {
+        var decoder = AIChatStreamDecoder(provider: "DeepSeek")
+        #expect(decoder.feed(Array(": keep-alive\n\n: keep-alive\n\n".utf8)).isEmpty)
+    }
+}

@@ -24,6 +24,8 @@ public enum AIFailure: Error, Equatable, Sendable {
     case offline
     /// Nothing came back in time.
     case timedOut(provider: String, seconds: Int)
+    /// The server answered but then sent nothing for `seconds` (`AIWatchdog`); `started`: some of the answer came.
+    case stalled(provider: String, seconds: Int, started: Bool)
     case unreachable(host: String)
     case network(String)
     /// An error the provider reported in the middle of the stream.
@@ -66,6 +68,12 @@ public enum AIFailure: Error, Equatable, Sendable {
             return "You're offline. Quick AI needs the internet to reach your provider."
         case .timedOut(let provider, let seconds):
             return "\(provider) didn't answer within \(seconds) seconds. Try again."
+        case .stalled(let provider, let seconds, let started):
+            if started {
+                return "\(provider) stopped sending the answer for \(seconds) seconds. Try again (⌘R)."
+            }
+            return "\(provider) took the question but sent nothing back for \(seconds) seconds; it may be overloaded. "
+                + "Try again (⌘R), or another model (⇧⌘R)."
         case .unreachable(let host):
             return "Can't reach \(host). Check the connection, or the base URL in Settings → Launcher → Quick AI."
         case .network(let detail):
