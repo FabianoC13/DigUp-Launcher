@@ -103,8 +103,16 @@ enum WindowsFeature: LauncherFeature {
         Double(min(gapRange.upperBound, max(gapRange.lowerBound, AppSettings.defaults.integer(forKey: gapKey))))
     }
 
+    static let cycleKey = "launcherWindowCycleHalves"
+
+    /// Running Left, Right, Top or Bottom Half again goes on to two thirds, then a third (on unless turned off).
+    static var cyclesHalves: Bool {
+        AppSettings.defaults.object(forKey: cycleKey) as? Bool ?? true
+    }
+
     private struct SettingsView: View {
         @AppStorage(WindowsFeature.gapKey, store: AppSettings.defaults) private var gap = 0
+        @AppStorage(WindowsFeature.cycleKey, store: AppSettings.defaults) private var cycles = true
 
         var body: some View {
             LabeledContent("Gap between windows") {
@@ -120,6 +128,11 @@ enum WindowsFeature: LauncherFeature {
                 }
             }
             Text("Halves, thirds, quarters and Maximize leave this much room around windows and between them.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Toggle("Repeating a half cycles through ½, ⅔ and ⅓", isOn: $cycles)
+            Text("Run Left Half again while the window is still there, and it takes two thirds of the display, then a "
+                 + "third, then half again. The same for Right, Top and Bottom Half.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -191,7 +204,7 @@ extension WindowsFeature {
         case .maximizeHeight: ("Maximize Height", "arrow.up.and.down", ["full height", "stretch"])
         case .center: ("Center", "dot.square", ["middle", "centre"])
         case .reasonableSize: ("Reasonable Size", "rectangle.ratio.4.to.3", ["default size", "medium"])
-        case .makeLarger: ("Make Larger", "rectangle.expand.diagonal", ["bigger", "grow", "increase"])
+        case .makeLarger: ("Make Larger", "rectangle.arrowtriangle.2.outward", ["bigger", "grow", "increase"])
         case .makeSmaller: ("Make Smaller", "rectangle.arrowtriangle.2.inward", ["shrink", "decrease"])
         case .moveUp: ("Move Up", "arrow.up.to.line", ["top edge"])
         case .moveDown: ("Move Down", "arrow.down.to.line", ["bottom edge"])

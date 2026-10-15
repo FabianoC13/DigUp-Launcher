@@ -69,13 +69,23 @@ enum SystemFeature: LauncherFeature {
 
         func items(for query: LauncherQuery) async -> [LauncherItem] {
             guard !query.isEmpty else { return [] }
-            return SystemFeature.commands.compactMap { command in
-                query.match(command.title, keywords: command.keywords).map { command.item(score: $0) }
+            // "volume 30": Set Volume to 30% first (and not twice when it's one of the presets).
+            let typed = LauncherVolumeSettings.requestedLevel(query.text).map { SystemFeature.volumeCommand($0) }
+            let matches = SystemFeature.commands.compactMap { command in
+                command.id == typed?.id ? nil
+                    : query.match(command.title, keywords: command.keywords).map { command.item(score: $0) }
             }
+            return (typed.map { [$0.item(score: 1)] } ?? []) + matches
         }
 
         func item(id: String) async -> LauncherItem? {
-            SystemFeature.commands.first { $0.id == id }?.item()
+            if let command = SystemFeature.commands.first(where: { $0.id == id }) { return command.item() }
+            // A typed level someone made a favorite or gave a hotkey ("cmd:volume-30").
+            let prefix = "\(Self.prefix):volume-"
+            guard id.hasPrefix(prefix), let level = Int(id.dropFirst(prefix.count)), (0...100).contains(level) else {
+                return nil
+            }
+            return SystemFeature.volumeCommand(level).item()
         }
     }
 }
@@ -101,6 +111,9 @@ extension SystemFeature {
                 run: { await endSession(.logOut, $0) }),
         Command(key: "screen-saver", title: "Start Screen Saver", keywords: ["screensaver"], symbol: "sparkles.tv",
                 run: { await startScreenSaver($0) }),
+        Command(key: "low-power-mode", title: "Toggle Low Power Mode",
+                keywords: ["energy saver", "battery saver", "power mode", "low power"], symbol: "leaf.fill",
+                needs: "An administrator's password", run: { await toggleLowPowerMode($0) }),
     ]
 
     private static let trashCommands: [Command] = [
@@ -120,6 +133,9 @@ extension SystemFeature {
                 symbol: "moon.fill", needs: "Automation (System Events)", run: { await setDarkMode(true, $0) }),
         Command(key: "dark-mode-off", title: "Turn Off Dark Mode", keywords: ["light mode", "appearance", "theme"],
                 symbol: "sun.max.fill", needs: "Automation (System Events)", run: { await setDarkMode(false, $0) }),
+        Command(key: "toggle-night-shift", title: "Toggle Night Shift",
+                keywords: ["night light", "blue light", "warm colors", "display tint"], symbol: "moon.circle.fill",
+                run: { toggleNightShift($0) }),
     ]
 
     private static let soundCommands: [Command] = [
@@ -133,10 +149,7 @@ extension SystemFeature {
                 run: { await setMuted(false, $0) }),
         Command(key: "toggle-mute", title: "Toggle Mute", keywords: ["sound", "silence", "volume"],
                 symbol: "speaker.slash", run: { await setMuted(nil, $0) }),
-    ] + [0, 25, 50, 75, 100].map { level in
-        Command(key: "volume-\(level)", title: "Set Volume to \(level)%", keywords: ["sound", "level"],
-                symbol: volumeSymbol(level), run: { await setVolume(level, $0) })
-    } + [
+    ] + [0, 25, 50, 75, 100].map { volumeCommand($0) } + [
         Command(key: "toggle-microphone", title: "Toggle Microphone Mute",
                 keywords: ["mic", "input", "mute microphone", "unmute microphone"], symbol: "mic.slash.fill",
                 run: { await toggleMicrophone($0) }),
@@ -212,6 +225,12 @@ extension SystemFeature {
         Command(key: "clear-clipboard", title: "Clear Clipboard", keywords: ["empty clipboard", "pasteboard"],
                 symbol: "clipboard", run: { clearClipboard($0) }),
     ]
+
+    /// Set Volume to `level`%: the presets, and any level typed as "volume 30".
+    static func volumeCommand(_ level: Int) -> Command {
+        Command(key: "volume-\(level)", title: "Set Volume to \(level)%", keywords: ["sound", "level"],
+                symbol: volumeSymbol(level), run: { await setVolume(level, $0) })
+    }
 
     static func volumeSymbol(_ level: Int) -> String {
         switch level {

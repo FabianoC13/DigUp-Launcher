@@ -16,6 +16,9 @@ extension WindowsFeature {
     private struct Remembered {
         var before: LauncherWindowRect
         var placed: LauncherWindowRect
+        /// The layout that placed it, and its step when that layout cycles (Left Half → two thirds → a third).
+        var layout: LauncherWindowLayout?
+        var step = 0
     }
 
     private static var remembered: [String: Remembered] = [:]
@@ -52,9 +55,17 @@ extension WindowsFeature {
         guard let screenIndex = LauncherWindowGeometry.screenIndex(of: front.frame, in: visible) else { return }
         var screen = visible[screenIndex]
         let target: LauncherWindowRect
+        var placedBy: (layout: LauncherWindowLayout, step: Int)?
         switch action {
+        case .layout(let layout) where layout.cycles && cyclesHalves:
+            let step = LauncherWindowGeometry.nextCycleStep(after: cycleStep(of: front, for: layout, screen: screen,
+                                                                               gap: gap))
+            target = LauncherWindowGeometry.cycledFrame(for: layout, step: step, window: front.frame, screen: screen,
+                                                        gap: gap)
+            placedBy = (layout, step)
         case .layout(let layout):
             target = LauncherWindowGeometry.frame(for: layout, window: front.frame, screen: screen, gap: gap)
+            placedBy = (layout, 0)
         case .restore:
             guard let saved = remembered[front.key] else {
                 SystemHUD.show("Nothing to restore: this window hasn't been moved", symbol: "arrow.uturn.backward")
@@ -75,7 +86,7 @@ extension WindowsFeature {
         }
         var restoring = false
         if case .restore = action { restoring = true }
-        remember(front, target: target, restoring: restoring)
+        remember(front, target: target, restoring: restoring, placedBy: placedBy)
         let placed = await Task.detached { place(front.window, at: target, within: screen, pid: pid) }.value
         if let placed {
             // What the app made of it (a minimum size, a terminal's character cells), for the next command.
@@ -105,9 +116,23 @@ extension WindowsFeature {
         return AX.frame(of: window) ?? placed
     }
 
+    /// The step of `layout`'s cycle the window is at: by its frame, or, for an app that kept a size of its own (a
+    /// terminal's character cells), by what the last command did if the window hasn't moved since.
+    private static func cycleStep(of front: FrontWindow, for layout: LauncherWindowLayout,
+                                  screen: LauncherWindowRect, gap: Double) -> Int? {
+        if let step = LauncherWindowGeometry.cycleStep(of: front.frame, for: layout, screen: screen, gap: gap) {
+            return step
+        }
+        guard let saved = remembered[front.key], saved.layout == layout, isSame(saved.placed, front.frame) else {
+            return nil
+        }
+        return saved.step
+    }
+
     /// Keeps where the window was before a run of layouts: a window still where the last layout put it keeps the
     /// frame from before that run, so Restore undoes all of it. Restore forgets it.
-    private static func remember(_ front: FrontWindow, target: LauncherWindowRect, restoring: Bool) {
+    private static func remember(_ front: FrontWindow, target: LauncherWindowRect, restoring: Bool,
+                                 placedBy: (layout: LauncherWindowLayout, step: Int)?) {
         if restoring {
             remembered[front.key] = nil
             rememberedOrder.removeAll { $0 == front.key }
@@ -115,9 +140,12 @@ extension WindowsFeature {
         }
         if let saved = remembered[front.key], isSame(saved.placed, front.frame) {
             remembered[front.key]?.placed = target
+            remembered[front.key]?.layout = placedBy?.layout
+            remembered[front.key]?.step = placedBy?.step ?? 0
             return
         }
-        remembered[front.key] = Remembered(before: front.frame, placed: target)
+        remembered[front.key] = Remembered(before: front.frame, placed: target, layout: placedBy?.layout,
+                                           step: placedBy?.step ?? 0)
         rememberedOrder.removeAll { $0 == front.key }
         rememberedOrder.append(front.key)
         if rememberedOrder.count > rememberedLimit {
