@@ -508,3 +508,32 @@ import Testing
         #expect(decoder.feed(Array(": keep-alive\n\n: keep-alive\n\n".utf8)).isEmpty)
     }
 }
+
+/// Error bodies as DeepSeek really sent them (Oct 2026).
+@Suite struct LauncherAIDeepSeekBodyTests {
+    @Test func unknownModel() {
+        let body = Data(("{\"error\":{\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, "
+            + "but you passed no-such-model. (request_id: 566f9d85-689a-4a52-8bfd-8029f0052f89)\",\"type\":"
+            + "\"invalid_request_error\",\"param\":null,\"code\":\"invalid_request_error\"}}").utf8)
+        let failure = AIFailure.from(status: 400, body: body, retryAfter: nil, provider: "DeepSeek", model: "no-such-model")
+        guard case .badRequest(_, let detail) = failure else {
+            Issue.record("expected a bad request, got \(failure)")
+            return
+        }
+        #expect(detail.hasPrefix("The supported API model names are deepseek-flash, deepseek-v4-pro"))
+        #expect(!detail.contains("request_id"))
+    }
+
+    @Test func refusedKey() {
+        let body = Data(("{\"error\":{\"message\":\"Authentication Fails, Your api key: ****0000 is invalid (request_id: "
+            + "a22aa317-11f0-4bc1-ae4c-6af7c598bf31)\",\"type\":\"authentication_error\",\"param\":null,\"code\":"
+            + "\"invalid_request_error\"}}").utf8)
+        let failure = AIFailure.from(status: 401, body: body, retryAfter: nil, provider: "DeepSeek", model: "deepseek-flash")
+        guard case .keyRefused(let provider, _) = failure else {
+            Issue.record("expected a refused key, got \(failure)")
+            return
+        }
+        #expect(provider == "DeepSeek")
+        #expect(failure.message.hasPrefix("The API key was refused by DeepSeek."))
+    }
+}
