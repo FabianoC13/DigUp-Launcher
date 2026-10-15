@@ -15,7 +15,9 @@ final class CalculatorHistoryMode: LauncherMode {
         model.history.entries.isEmpty ? "Copy or paste a calculator answer to keep it here" : nil
     }
 
-    var keysHint: String? { "⌘⇧P Pin · ⌃X Delete" }
+    var keysHint: String? {
+        model.history.entries.isEmpty ? nil : "↩ Copy   ⌘↩ Paste   ⇧⌘P Pin   ⌃X Delete   ⌘K Actions"
+    }
 
     func items(for query: LauncherQuery) async -> [LauncherItem] {
         let env = model.environment()

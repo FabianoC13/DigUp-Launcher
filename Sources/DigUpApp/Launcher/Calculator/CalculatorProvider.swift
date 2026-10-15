@@ -48,7 +48,7 @@ final class CalculatorProvider: LauncherProvider {
 
     static func answerItem(_ answer: CalcAnswer, question: String) -> LauncherItem {
         let detail: LauncherDetail
-        var metadata: [(label: String, value: String)]
+        let metadata: [(label: String, value: String)]
         if let color = answer.color {
             detail = .custom(AnyView(CalculatorColorDetail(color: color, answer: answer)))
             let shown: Set<String> = ["RGBA", "HSL (CSS4)", "Oklch"]
@@ -56,9 +56,6 @@ final class CalculatorProvider: LauncherProvider {
         } else {
             detail = .answer(answer.result, caption: answer.caption ?? answer.expression)
             metadata = answer.alternatives.prefix(6).map { ($0.label, $0.value) }
-        }
-        if metadata.isEmpty, answer.caption != nil, answer.kind != .math {
-            metadata = [("Question", answer.expression)]
         }
         return LauncherItem(
             id: "calc:answer", title: answer.result, subtitle: answer.expression, icon: icon(answer),
@@ -117,7 +114,9 @@ final class CalculatorProvider: LauncherProvider {
             actions.append(LauncherAction(id: "replace", title: "Put Answer in Search Bar", symbol: "arrow.up.square",
                                           shortcut: LauncherShortcut("return", [.command, .shift]),
                                           keepsPanelOpen: true) { context in
-                context.query = answer.number ?? answer.copyText
+                // Numbers go back bare; quantities keep their unit or currency ("€89.33") to convert further.
+                let plain = answer.kind == .math || answer.kind == .base
+                context.query = plain ? answer.number ?? answer.copyText : answer.copyText
             })
             for alternative in answer.alternatives.prefix(4) {
                 actions.append(LauncherAction(id: "copy-\(alternative.label)", title: "Copy \(alternative.label)",
@@ -155,7 +154,7 @@ final class CalculatorProvider: LauncherProvider {
                 accessory: "Dictionary", section: .answer, score: 1, actions: [open], tracksUsage: false)
         }
         return LauncherItem(
-            id: "calc:define", title: term, subtitle: CalculatorDictionary.summary(definition),
+            id: "calc:define", title: term, subtitle: CalculatorDictionary.summary(definition, term: term),
             icon: .symbol("character.book.closed", .brown), accessory: "Dictionary", section: .answer, score: 1,
             actions: [
                 open,

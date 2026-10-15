@@ -39,7 +39,17 @@ public enum CalcEngine {
                           alternatives: formats, color: color)
     }
 
-    static func math(_ text: String, env: CalcEnvironment) -> CalcAnswer? {
+    static func math(_ input: String, env: CalcEnvironment) -> CalcAnswer? {
+        // "what is 2+2", "calculate 3*4".
+        var text = input
+        let lower = CalcText.clean(input)
+        for prefix in ["what is", "what's", "whats", "calculate", "calc", "compute", "solve"] {
+            if CalcText.dropPrefix(prefix, from: lower) != nil {
+                text = String(CalcText.clean(input, lowercased: false).dropFirst(prefix.count + 1))
+                break
+            }
+        }
+        text = text.replacingOccurrences(of: "?", with: "")
         guard !looksLikeDate(text), let result = CalcExpression.evaluate(text, env: env), !result.isTrivial
         else { return nil }
         let format = env.format
@@ -47,8 +57,8 @@ public enum CalcEngine {
         var expression = CalcText.clean(text, lowercased: false)
         while expression.hasSuffix("=") || expression.hasSuffix(" ") { expression.removeLast() }
         var alternatives: [CalcAlternative] = []
-        let lower = expression.lowercased()
-        if lower.contains("0x") || lower.contains("0b") || lower.contains("0o"),
+        let written = expression.lowercased()
+        if written.contains("0x") || written.contains("0b") || written.contains("0o"),
            result.value == result.value.rounded(), abs(result.value) < 9.2e18 {
             let value = Int(result.value)
             alternatives = [CalcAlternative("Hex", CalcBases.write(value, base: 16, format: format)),

@@ -26,11 +26,19 @@ enum CalculatorDictionary {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The first sense, short enough for a row's subtitle.
-    nonisolated static func summary(_ definition: String) -> String {
+    /// The first sense without the headword and pronunciation ("noun the occurrence and development of events by
+    /// chance…"), short enough for a row's subtitle.
+    nonisolated static func summary(_ definition: String, term: String) -> String {
         let firstParagraph = definition.split(separator: "\n").first.map(String.init) ?? definition
-        guard firstParagraph.count > 140 else { return firstParagraph }
-        return String(firstParagraph.prefix(139)) + "…"
+        var parts = firstParagraph.components(separatedBy: " | ")
+        if parts.count > 1, parts[0].lowercased().hasPrefix(term.lowercased()) {
+            parts.removeFirst()
+            // The pronunciation is one spaceless word: "ˌsɛr(ə)nˈdɪpɪti".
+            if parts.count > 1, !parts[0].contains(" ") { parts.removeFirst() }
+        }
+        let text = parts.joined(separator: " | ")
+        guard text.count > 140 else { return text }
+        return String(text.prefix(139)) + "…"
     }
 
     /// The Dictionary app at `term`.
