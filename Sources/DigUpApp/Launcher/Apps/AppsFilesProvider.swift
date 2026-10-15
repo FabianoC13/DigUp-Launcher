@@ -93,7 +93,8 @@ enum AppsPathBrowser {
             if left.score != right.score { return left.score > right.score }
             return left.hit.name.localizedStandardCompare(right.hit.name) == .orderedAscending
         }
-        let section = LauncherSection.named(AppsFormat.tildePath(folder, home: home), order: 3)
+        // Below the typed folder's own row (in Results).
+        let section = LauncherSection.named(AppsFormat.tildePath(folder, home: home), order: 4)
         var items: [LauncherItem] = []
         if prefix.isEmpty, let folderHit {
             items.append(folderItem(folderHit, home: home))

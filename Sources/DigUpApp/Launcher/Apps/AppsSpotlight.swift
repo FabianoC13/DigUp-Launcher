@@ -163,11 +163,14 @@ enum AppsFileFinder {
         return Array(ranked.prefix(limit))
     }
 
-    /// Files opened in the last `days` days, most recent first (Search Files with nothing typed).
+    /// Files opened in the last `days` days, most recent first (Search Files with nothing typed). Apps are left out:
+    /// they're opened all the time and are in root search already.
     static func recent(days: Int, limit: Int) async -> [AppsFileHit] {
         let hits = await AppsSpotlight.search(AppsFileSearchRules.recentlyUsed(days: days), limit: limit * 3)
         let home = NSHomeDirectory()
-        return Array(hits.filter { !AppsFileSearchRules.isExcluded($0.path, home: home) && !$0.isFolder }
-            .prefix(limit))
+        return Array(hits.filter { hit in
+            !hit.isFolder && hit.url.pathExtension.lowercased() != "app"
+                && !AppsFileSearchRules.isExcluded(hit.path, home: home)
+        }.prefix(limit))
     }
 }
