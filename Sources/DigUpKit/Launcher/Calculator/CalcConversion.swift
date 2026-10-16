@@ -30,8 +30,13 @@ public enum CalcConversion {
             guard let target = target(right, scanner: scanner), let quantity = scanner.quantity(left) else { continue }
             if let answer = convert(quantity, to: target, env: env, ppi: ppi) { return answer }
         }
-        guard let quantity = scanner.quantity(text) else { return nil }
-        return bare(quantity, env: env, ppi: ppi)
+        if let quantity = scanner.quantity(text) { return bare(quantity, env: env, ppi: ppi) }
+        // "90eur usd", "10 km miles": the target named last with no separator word, the way Spotlight and Raycast
+        // take it. Only tried once the whole text isn't a quantity, so "2 lb 3 oz" stays a sum.
+        guard let space = text.lastIndex(of: " "),
+              let target = target(String(text[text.index(after: space)...]), scanner: scanner),
+              let quantity = scanner.quantity(String(text[..<space])) else { return nil }
+        return convert(quantity, to: target, env: env, ppi: ppi)
     }
 
     /// Every way to cut the text at a separator word, rightmost first.

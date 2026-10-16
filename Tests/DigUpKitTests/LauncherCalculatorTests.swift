@@ -192,6 +192,7 @@ private enum World {
         ("100 brl", "$20.00"), ("8 dollars/hour in gbp", "£6.18/h"), ("USD1K in eur", "€909.09"),
         ("10k usd in eur", "€9,090.91"), ("100 pounds in eur", "€117.65"), ("100 usd + 50 eur in gbp", "£119.77"),
         ("15 usd per hour in eur per day", "€327.27/day"), ("1 jpy in eur", "€0.00625"), ("100 reais in dollars", "$20.00"),
+        ("90eur usd", "$99.00"), ("28usd eur", "€25.45"), ("100 usd gbp", "£77.27"), ("10 km miles", "6.21371 mi"),
     ])
     func conversions(_ question: String, _ expected: String) {
         #expect(World.ask(question) == expected, "\(question)")
