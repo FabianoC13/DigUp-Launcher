@@ -18,7 +18,7 @@ The catalog of Raycast functions this is modelled on is in `raycast-catalog.json
   suggestions, aliases, hotkeys). All providers run concurrently per keystroke; each one's items show as soon as ready.
   Check `Task.isCancelled` after any await.
 - `LauncherMode`: a pushed view (Clipboard History, Quick AI…). List modes return items; others return a SwiftUI view
-  from `makeView(context:)`. `handle(_:query:context:)` sees keys first (except Esc and ⌘K). Esc / ⌫-on-empty pops.
+  from `makeView(context:)`. `handle(_:query:context:)` sees keys first (except Esc and ⌘K). Esc pops.
 - `LauncherFeature`: static `providers(_:)`, `start(_:)`, `settingsTitle`, `settingsView(_:)`. Registered in
   `LauncherFeatures.all`. Each feature lives in its own folder and owns only its files.
 - `Launcher`: runs providers, ranks (provider score + 0.35·frecency + 0.5·pick boost; alias match = 3), suggestions

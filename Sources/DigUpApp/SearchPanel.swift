@@ -605,12 +605,10 @@ final class SearchPanelController {
             return true
         }
         if let mode {
+            // Only Esc goes back. ⌫ in an empty field used to as well, like
+            // Raycast, but one ⌫ too many while clearing a query threw the
+            // mode away along with it.
             if mode.handle(event, query: query, context: context) { return true }
-            // ⌫ in an empty field goes back, like Raycast.
-            if event.keyCode == 51, modifiers.isEmpty, query.isEmpty {
-                popMode()
-                return true
-            }
         } else if event.keyCode == 48, modifiers.isEmpty, !isCode {  // Tab: ask AI
             askAI()
             return true

@@ -23,7 +23,7 @@ extension LauncherProvider {
 }
 
 /// A view the launcher pushes over the root search, like Raycast's commands that open their own list: Clipboard
-/// History, Quick AI, My Schedule. Esc (or ⌫ in an empty field) goes back.
+/// History, Quick AI, My Schedule. Esc goes back.
 protocol LauncherMode: AnyObject {
     var title: String { get }
     var placeholder: String { get }
