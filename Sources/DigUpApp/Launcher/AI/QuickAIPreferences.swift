@@ -61,6 +61,10 @@ final class QuickAIPreferences {
             else { defaults.removeObject(forKey: "quickAI.creativity") }
         }
     }
+    /// Whether Quick AI may call Mac tools (list/move/trash files, run shell). Trash and delete-like shell still ask.
+    var macAccess: Bool {
+        didSet { defaults.set(macAccess, forKey: "quickAI.macAccess") }
+    }
     /// Model ids from each provider's `GET /models`, the last time it was asked (Settings, Test Connection).
     private(set) var knownModels: [String: [String]] {
         didSet { defaults.set(knownModels, forKey: "quickAI.knownModels") }
@@ -86,6 +90,8 @@ final class QuickAIPreferences {
         thinking = defaults.bool(forKey: "quickAI.thinking")
         creativity = defaults.object(forKey: "quickAI.creativity") == nil
             ? nil : defaults.double(forKey: "quickAI.creativity")
+        macAccess = defaults.object(forKey: "quickAI.macAccess") == nil
+            ? true : defaults.bool(forKey: "quickAI.macAccess")
         knownModels = defaults.dictionary(forKey: "quickAI.knownModels") as? [String: [String]] ?? [:]
         modelNames = defaults.dictionary(forKey: "quickAI.modelNames") as? [String: String] ?? [:]
         keyHints = defaults.dictionary(forKey: "quickAI.keyHints") as? [String: String] ?? [:]

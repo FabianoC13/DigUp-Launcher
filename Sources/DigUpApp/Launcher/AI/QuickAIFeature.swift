@@ -178,9 +178,11 @@ final class QuickAIProvider: LauncherProvider {
             actions: [LauncherAction(id: "open", title: "Open Quick AI", symbol: "sparkles", keepsPanelOpen: true) {
                 QuickAIFeature.ask("", context: $0)
             }, settings],
-            detail: .markdown("**Quick AI** answers in the launcher, streaming as Markdown.\n\n"
-                + "Tip: type a question in the search field and press **Tab** to ask it straight away. ↩ with an "
-                + "empty field pastes the answer into the app you came from."))
+            detail: .markdown("**Quick AI** answers in the launcher, streaming as Markdown. With **Allow Mac "
+                + "access** on (Settings), it can list, move and trash files and run shell commands — DigUp asks "
+                + "before trash or shell that can delete files.\n\n"
+                + "Tip: type a question and press **Tab** (or ↩) to ask — including follow-ups while Quick AI is "
+                + "open. ↩ with an empty field pastes the answer into the app you came from."))
         let new = LauncherItem(
             id: "ai:new", title: "New AI Chat", subtitle: "Start a fresh Quick AI conversation",
             icon: .symbol("square.and.pencil", Brand.leaf), accessory: "Command",

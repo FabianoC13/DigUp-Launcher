@@ -53,7 +53,7 @@ private struct QuickAIPendingImagesView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Attached · ↩ to send")
+            Text("Attached · ↩ / Tab to send")
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
@@ -108,7 +108,10 @@ private struct QuickAIEmptyState: View {
                 Text("Ask anything").font(.system(size: 16, weight: .semibold))
                 let preferences = QuickAIPreferences.shared
                 Text("\(preferences.provider.name) answers with \(preferences.displayName(chat.model)). Type a "
-                     + "question, or drop an image onto the field, and press ↩.")
+                     + "question, or drop an image onto the field, and press ↩ or Tab."
+                     + (preferences.macAccess
+                        ? " It can also move files, trash items and run shell commands (it'll ask before deleting)."
+                        : ""))
                     .font(.system(size: 12.5))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -142,6 +145,9 @@ private struct QuickAITurnView: View {
             if !turn.reasoning.isEmpty {
                 QuickAIThinkingView(reasoning: turn.reasoning, thinking: turn.phase == .thinking,
                                     time: turn.thinkingTime)
+            }
+            if !turn.toolSteps.isEmpty {
+                QuickAIToolStepsView(steps: turn.toolSteps)
             }
             if turn.showsChanges, let original = turn.original, turn.phase == .done,
                let runs = AIWordDiff.runs(from: original, to: AICommand.cleanRewrite(turn.answer)) {
@@ -206,7 +212,60 @@ private struct QuickAITurnView: View {
         case .readingKey: "Reading the API key…"
         case .waiting: "Waiting for the answer…"
         case .thinking: "Thinking…"
+        case .usingTools: "Using your Mac…"
         default: "Answering…"
+        }
+    }
+}
+
+/// Mac tool calls DigUp ran for this turn (list folder, trash, shell…).
+private struct QuickAIToolStepsView: View {
+    let steps: [QuickAIToolStep]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(steps) { step in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: symbol(for: step.status))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(color(for: step.status))
+                        .frame(width: 14)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(step.title)
+                            .font(.system(size: 12, weight: .semibold))
+                        if !step.detail.isEmpty {
+                            Text(step.detail)
+                                .font(.system(size: 11.5).monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .lineLimit(6)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.05)))
+            }
+        }
+    }
+
+    private func symbol(for status: QuickAIToolStep.Status) -> String {
+        switch status {
+        case .running: "ellipsis.circle"
+        case .done: "checkmark.circle.fill"
+        case .failed: "xmark.circle.fill"
+        case .denied: "hand.raised.fill"
+        }
+    }
+
+    private func color(for status: QuickAIToolStep.Status) -> Color {
+        switch status {
+        case .running: .secondary
+        case .done: .green
+        case .failed: .red
+        case .denied: .orange
         }
     }
 }

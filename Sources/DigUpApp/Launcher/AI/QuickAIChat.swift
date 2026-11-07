@@ -14,6 +14,8 @@ final class QuickAITurn: Identifiable {
         /// The model is reasoning (its thoughts stream into `reasoning`).
         case thinking
         case answering
+        /// Running a Mac tool the model asked for (trash, shell…).
+        case usingTools
         case done
         /// ⌘. or Esc stopped it; `answer` holds what came before.
         case stopped
@@ -37,6 +39,8 @@ final class QuickAITurn: Identifiable {
     @ObservationIgnored let imagePreviews: [NSImage]
     var answer = ""
     var reasoning = ""
+    /// Mac tool steps for this turn (list / trash / shell…), newest last.
+    var toolSteps: [QuickAIToolStep] = []
     var model: String
     var phase: Phase
     /// "The answer was cut off at the length limit."
@@ -64,7 +68,7 @@ final class QuickAITurn: Identifiable {
 
     var isBusy: Bool {
         switch phase {
-        case .readingKey, .waiting, .thinking, .answering: true
+        case .readingKey, .waiting, .thinking, .answering, .usingTools: true
         default: false
         }
     }
@@ -132,7 +136,18 @@ final class QuickAIChat {
         if let modelOverride, modelOverride.provider == preferences.providerID { return modelOverride.model }
         return preferences.model
     }
-    var systemPrompt: String { command?.instructions ?? preferences.effectiveSystemPrompt }
+    var systemPrompt: String {
+        let base = command?.instructions ?? preferences.effectiveSystemPrompt
+        // AI commands that rewrite selected text stay text-only; plain Quick AI can use Mac tools when enabled.
+        let macTools = preferences.macAccess && command == nil
+        return AIConversation.systemPrompt(base, macTools: macTools)
+    }
+
+    private var macTools: [AIToolDefinition] {
+        preferences.macAccess && command == nil ? AIMacToolCatalog.definitions : []
+    }
+
+    private static let maxToolRounds = 8
     var title: String {
         guard let first = turns.first else { return "New Chat" }
         if let command { return AIChatTitle.make("\(command.title): \(first.shown ?? first.question)") }
@@ -201,6 +216,7 @@ final class QuickAIChat {
         if let newModel { modelOverride = (preferences.providerID, newModel) }
         turn.answer = ""
         turn.reasoning = ""
+        turn.toolSteps = []
         turn.note = nil
         turn.thinkingTime = nil
         turn.answerTime = nil
@@ -316,15 +332,14 @@ final class QuickAIChat {
         let history = turns.prefix { $0 !== turn }.map {
             (question: $0.question, answer: $0.answer, images: $0.images)
         }
-        let messages = AIConversation.messages(system: systemPrompt, history: Array(history),
+        var messages = AIConversation.messages(system: systemPrompt, history: Array(history),
                                                question: turn.question, images: turn.images)
+        let tools = macTools
         let preset = preferences.provider
-        let request = AIChatRequest(model: turn.model, messages: messages, stream: true,
-                                    temperature: preferences.creativity,
-                                    thinking: preset.thinkingSwitch ? preferences.thinking : nil)
         let baseURL = preferences.baseURL(for: preset)
         turn.phase = .readingKey
-        log("quick ai: asking \(preset.name) \(turn.model) (\(messages.count) messages)")
+        log("quick ai: asking \(preset.name) \(turn.model) (\(messages.count) messages"
+            + (tools.isEmpty ? "" : ", \(tools.count) tools") + ")")
         task = Task { [weak self] in
             // The key first, off the main thread: the Keychain may ask you to allow DigUp, and waits for the answer.
             let read = await Task.detached { () -> Result<String, QuickAIKeys.ReadError> in
@@ -349,59 +364,122 @@ final class QuickAIChat {
             turn.phase = .waiting
             let endpoint = QuickAIEndpoint(preset: preset, baseURL: baseURL, key: key.isEmpty ? nil : key,
                                            model: turn.model)
-            await stream(request, to: endpoint, into: turn)
+            await agent(messages: &messages, tools: tools, endpoint: endpoint, into: turn)
         }
     }
 
-    private func stream(_ request: AIChatRequest, to endpoint: QuickAIEndpoint, into turn: QuickAITurn) async {
+    /// Streams answers and, when Mac tools are on, runs tool calls until the model stops or the round limit.
+    private func agent(messages: inout [AIChatMessage], tools: [AIToolDefinition], endpoint: QuickAIEndpoint,
+                       into turn: QuickAITurn) async {
         let clock = ContinuousClock()
         let start = clock.now
-        var reason: String?
         do {
-            for try await event in QuickAIClient.stream(request, to: endpoint) {
+            for round in 0..<Self.maxToolRounds {
+                let request = AIChatRequest(model: turn.model, messages: messages, stream: true,
+                                            temperature: preferences.creativity,
+                                            thinking: endpoint.preset.thinkingSwitch ? preferences.thinking : nil,
+                                            tools: tools)
+                let outcome = try await streamRound(request, to: endpoint, into: turn, started: start)
                 guard !Task.isCancelled else { return }
-                switch event {
-                case .reasoning(let text):
-                    if turn.phase == .waiting { turn.phase = .thinking }
-                    add(reasoning: text, to: turn)
-                case .content(let text):
-                    if turn.phase != .answering {
-                        if turn.phase == .thinking { turn.thinkingTime = clock.now - start }
-                        turn.phase = .answering
+                switch outcome {
+                case .answered(let reason):
+                    flush()
+                    turn.answerTime = clock.now - start
+                    if turn.answer.isEmpty, turn.toolSteps.isEmpty {
+                        finish(turn, failure: reason == "content_filter" ? .blocked(provider: endpoint.providerName)
+                            : .emptyAnswer(provider: endpoint.providerName))
+                        return
                     }
-                    add(answer: text, to: turn)
-                case .finished(let finish):
-                    reason = finish
-                case .failed(let failure):
-                    throw failure
-                case .done:
-                    break
+                    if turn.answer.isEmpty, !turn.toolSteps.isEmpty {
+                        turn.answer = turn.toolSteps.map { "• \($0.title): \($0.detail)" }.joined(separator: "\n")
+                    }
+                    switch reason {
+                    case "length": turn.note = "The answer was cut off at the model's length limit."
+                    case "content_filter": turn.note = "\(endpoint.providerName)'s content filter cut the answer short."
+                    default: break
+                    }
+                    turn.phase = .done
+                    lastActivity = Date()
+                    log("quick ai: \(endpoint.model) answered \(turn.answer.count) characters in "
+                        + String(format: "%.1f s", (clock.now - start).quickAISeconds))
+                    save()
+                    QuickAIDebug.answered(self)
+                    return
+                case .tools(let calls, let partial):
+                    flush()
+                    messages.append(.assistant(content: partial, toolCalls: calls))
+                    turn.phase = .usingTools
+                    tick += 1
+                    for call in calls {
+                        guard !Task.isCancelled else { return }
+                        let (result, step) = await QuickAIMacTools.run(call, context: context)
+                        turn.toolSteps.append(step)
+                        messages.append(.tool(id: call.id, content: result))
+                        tick += 1
+                        log("quick ai: tool \(call.name) → \(step.status)")
+                    }
+                    turn.phase = .waiting
+                    if round == Self.maxToolRounds - 1 {
+                        turn.note = "Stopped after \(Self.maxToolRounds) tool rounds."
+                        if turn.answer.isEmpty {
+                            turn.answer = turn.toolSteps.map { "• \($0.title): \($0.detail)" }.joined(separator: "\n")
+                        }
+                        turn.phase = .done
+                        turn.answerTime = clock.now - start
+                        lastActivity = Date()
+                        save()
+                        QuickAIDebug.answered(self)
+                        return
+                    }
                 }
             }
-            guard !Task.isCancelled else { return }
-            flush()
-            turn.answerTime = clock.now - start
-            if turn.answer.isEmpty {
-                finish(turn, failure: reason == "content_filter" ? .blocked(provider: endpoint.providerName)
-                    : .emptyAnswer(provider: endpoint.providerName))
-                return
-            }
-            switch reason {
-            case "length": turn.note = "The answer was cut off at the model's length limit."
-            case "content_filter": turn.note = "\(endpoint.providerName)'s content filter cut the answer short."
-            default: break
-            }
-            turn.phase = .done
-            lastActivity = Date()
-            log("quick ai: \(endpoint.model) answered \(turn.answer.count) characters in "
-                + String(format: "%.1f s", (clock.now - start).quickAISeconds))
-            save()
-            QuickAIDebug.answered(self)
         } catch {
             guard !Task.isCancelled, !(error is CancellationError) else { return }
             flush()
             finish(turn, failure: error as? AIFailure ?? .network(error.localizedDescription))
         }
+    }
+
+    private enum RoundOutcome {
+        case answered(reason: String?)
+        case tools([AIToolCall], partial: String)
+    }
+
+    private func streamRound(_ request: AIChatRequest, to endpoint: QuickAIEndpoint, into turn: QuickAITurn,
+                             started: ContinuousClock.Instant) async throws -> RoundOutcome {
+        var reason: String?
+        var tools = AIToolCallAccumulator()
+        let answerBefore = turn.answer
+        for try await event in QuickAIClient.stream(request, to: endpoint) {
+            guard !Task.isCancelled else { throw CancellationError() }
+            switch event {
+            case .reasoning(let text):
+                if turn.phase == .waiting { turn.phase = .thinking }
+                add(reasoning: text, to: turn)
+            case .content(let text):
+                if turn.phase != .answering {
+                    if turn.phase == .thinking { turn.thinkingTime = ContinuousClock().now - started }
+                    turn.phase = .answering
+                }
+                add(answer: text, to: turn)
+            case .toolCall(let delta):
+                if turn.phase == .waiting || turn.phase == .thinking { turn.phase = .usingTools }
+                tools.add(delta)
+            case .finished(let finish):
+                reason = finish
+            case .failed(let failure):
+                throw failure
+            case .done:
+                break
+            }
+        }
+        flush()
+        let calls = tools.calls()
+        if reason == "tool_calls" || !calls.isEmpty {
+            let partial = String(turn.answer.dropFirst(answerBefore.count))
+            return .tools(calls, partial: partial)
+        }
+        return .answered(reason: reason)
     }
 
     private func finish(_ turn: QuickAITurn, failure: AIFailure) {

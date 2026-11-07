@@ -189,6 +189,9 @@ final class SearchPanelController {
     }
 
     func hide() {
+        // An NSAlert (Quick AI “Run this command?”, trash confirm…) owns the key; dismissing the panel now would
+        // pop Quick AI and cancel the answer mid-tool.
+        if NSApp.modalWindow != nil { return }
         dragWatch?.invalidate()
         dragWatch = nil
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
@@ -502,6 +505,9 @@ final class SearchPanelController {
             let window = note.object as? NSWindow
             MainActor.assumeIsolated {
                 guard let self, let window, window !== self.window, !(window is QLPreviewPanel) else { return }
+                // Quick AI tool confirms (and other NSAlerts) become key while DigUp is modal — don't dismiss the
+                // panel, or the in-flight answer is cancelled and the tool fails with CancellationError.
+                if NSApp.modalWindow != nil { return }
                 if Date().timeIntervalSince(self.shownAt) < 0.5 {
                     // Activating the app can hand the key to its last window just after the panel opened: take it back.
                     self.window?.makeKey()

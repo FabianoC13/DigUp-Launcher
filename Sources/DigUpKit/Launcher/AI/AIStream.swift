@@ -97,7 +97,9 @@ public enum AIStreamEvent: Equatable, Sendable {
     /// More of the model's reasoning (DeepSeek's `reasoning_content`, OpenRouter's `reasoning`): shown apart from the
     /// answer, never mixed into it.
     case reasoning(String)
-    /// The answer is complete: "stop", "length" (cut off at the length limit), "content_filter"…
+    /// A piece of a tool call (arguments stream in; accumulate by `index` until `finished`).
+    case toolCall(AIToolCallDelta)
+    /// The answer is complete: "stop", "length" (cut off at the length limit), "tool_calls", "content_filter"…
     case finished(reason: String)
     /// The server reported an error in the middle of the stream.
     case failed(AIFailure)
@@ -150,6 +152,15 @@ public struct AIChatStreamDecoder: Sendable {
             if let content = part?.content, !content.isEmpty {
                 events.append(.content(content))
             }
+            if let calls = part?.tool_calls {
+                for (fallback, call) in calls.enumerated() {
+                    events.append(.toolCall(AIToolCallDelta(
+                        index: call.index ?? fallback,
+                        id: call.id,
+                        name: call.function?.name,
+                        arguments: call.function?.arguments)))
+                }
+            }
             if let reason = choice.finish_reason, !reason.isEmpty {
                 if reason == "error" {
                     events.append(.failed(.stream("\(provider) stopped with an error")))
@@ -176,6 +187,18 @@ public struct AIChatStreamDecoder: Sendable {
         var content: String?
         var reasoning_content: String?
         var reasoning: String?
+        var tool_calls: [ToolCall]?
+    }
+
+    private struct ToolCall: Decodable {
+        var index: Int?
+        var id: String?
+        var function: Function?
+
+        struct Function: Decodable {
+            var name: String?
+            var arguments: String?
+        }
     }
 
     /// `{"message": "…"}`, or just a string.

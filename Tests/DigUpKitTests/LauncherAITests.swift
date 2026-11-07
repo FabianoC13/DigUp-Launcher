@@ -113,6 +113,29 @@ import Testing
         var decoder = AIChatStreamDecoder(provider: "DeepSeek")
         #expect(decoder.feed(Array("data: not json\n\ndata: {\"choices\":[]}\n\n".utf8)).isEmpty)
     }
+
+    @Test func toolCallDeltasAccumulate() {
+        var decoder = AIChatStreamDecoder(provider: "OpenAI")
+        let text = """
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"trash_path","arguments":"{\\"pa"}}]}}]}
+
+            data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\\":\\"~/Desktop/x\\"}"}}]}}]}
+
+            data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
+
+            data: [DONE]
+
+            """
+        let events = decoder.feed(Array(text.utf8)) + decoder.finish()
+        var tools = AIToolCallAccumulator()
+        for event in events {
+            if case .toolCall(let delta) = event { tools.add(delta) }
+        }
+        #expect(tools.calls() == [AIToolCall(id: "call_1", name: "trash_path",
+                                             arguments: #"{"path":"~/Desktop/x"}"#)])
+        #expect(events.contains(.finished(reason: "tool_calls")))
+        #expect(events.contains(.done))
+    }
 }
 
 @Suite struct LauncherAIFailureTests {
@@ -191,6 +214,49 @@ import Testing
         let request = AIChatRequest(model: "deepseek-flash", messages: [AIChatMessage(.user, "hi")])
         let body = String(decoding: try request.body(), as: UTF8.self)
         #expect(body == #"{"messages":[{"content":"hi","role":"user"}],"model":"deepseek-flash","stream":true}"#)
+    }
+
+    @Test func toolsAndToolMessagesEncode() throws {
+        let tools = [AIToolDefinition(name: "trash_path", description: "Trash a path",
+                                      parameters: ["type": .string("object")])]
+        let request = AIChatRequest(
+            model: "m",
+            messages: [
+                .assistant(content: "", toolCalls: [AIToolCall(id: "c1", name: "trash_path",
+                                                               arguments: #"{"path":"~/Desktop/a"}"#)]),
+                .tool(id: "c1", content: "Moved to Trash."),
+            ],
+            stream: false,
+            tools: tools)
+        let body = try object(request)
+        #expect(body["tools"] != nil)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        #expect(messages[0]["tool_calls"] != nil)
+        #expect(messages[0]["content"] is NSNull)
+        #expect(messages[1]["role"] as? String == "tool")
+        #expect(messages[1]["tool_call_id"] as? String == "c1")
+    }
+
+    @Test func macPathsExpandHome() {
+        #expect(AIMacToolCatalog.resolvePath("~", home: "/Users/fab") == "/Users/fab")
+        #expect(AIMacToolCatalog.resolvePath("~/Desktop", home: "/Users/fab") == "/Users/fab/Desktop")
+        #expect(AIMacToolCatalog.resolvePath("/tmp/x", home: "/Users/fab") == "/tmp/x")
+        #expect(AIMacToolCatalog.resolvePath("Desktop", home: "/Users/fab") == "/Users/fab/Desktop")
+        #expect(AIMacToolCatalog.resolvePath("  ", home: "/Users/fab") == nil)
+    }
+
+    @Test func shellRiskFlagsDeletesOnly() {
+        #expect(!AIMacShellRisk.canDeleteFiles("ls -la ~/Desktop"))
+        #expect(!AIMacShellRisk.canDeleteFiles(#"find ~ -maxdepth 2 -name "*.env" 2>/dev/null | head -20"#))
+        #expect(!AIMacShellRisk.canDeleteFiles("mv ~/Desktop/a ~/Documents/a"))
+        #expect(!AIMacShellRisk.canDeleteFiles("find ~/.Trash -maxdepth 1 2>/dev/null | head"))
+        #expect(AIMacShellRisk.canDeleteFiles("rm -rf ~/Desktop/old"))
+        #expect(AIMacShellRisk.canDeleteFiles("trash ~/Desktop/old"))
+        #expect(AIMacShellRisk.canDeleteFiles("find . -name '*.tmp' -delete"))
+        #expect(AIMacShellRisk.canDeleteFiles("find . -type f -exec rm {} +"))
+        #expect(AIMacShellRisk.canDeleteFiles("git clean -fd"))
+        #expect(AIMacShellRisk.canDeleteFiles("mv ~/secret /dev/null"))
+        #expect(!AIMacShellRisk.canDeleteFiles("cat notes.txt 2>/dev/null"))
     }
 
     @Test func optionsEncodeInTheProvidersShape() throws {

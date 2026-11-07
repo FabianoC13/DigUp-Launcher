@@ -62,6 +62,10 @@ struct QuickAISettingsView: View {
             Picker("Creativity", selection: $preferences.creativity) {
                 ForEach(QuickAIPreferences.creativityChoices, id: \.title) { Text($0.title).tag($0.value) }
             }
+            Toggle(isOn: $preferences.macAccess) {
+                Text("Allow Mac access")
+                Text("Quick AI can list, move and trash files, open paths, and run shell commands. Only trash and shell commands that can delete files ask first.")
+            }
             Picker("↩ on an answer", selection: $preferences.primaryAction) {
                 Text("Paste it into the app you came from").tag(QuickAIPreferences.PrimaryAction.paste)
                 Text("Copy it to the clipboard").tag(QuickAIPreferences.PrimaryAction.copy)

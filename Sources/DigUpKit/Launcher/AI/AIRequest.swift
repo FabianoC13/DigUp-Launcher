@@ -13,23 +13,43 @@ public struct AIImageAttachment: Equatable, Sendable {
 }
 
 /// One message of a chat, as OpenAI-compatible APIs take it. A text-only message stays exactly that on the wire;
-/// image-bearing user messages encode their content as the API's array of text and `image_url` parts.
+/// image-bearing user messages encode their content as the API's array of text and `image_url` parts. Assistant
+/// messages may carry `tool_calls`; tool results use the `tool` role with `tool_call_id`.
 public struct AIChatMessage: Encodable, Equatable, Sendable {
-    public enum Role: String, Codable, Sendable { case system, user, assistant }
+    public enum Role: String, Codable, Sendable { case system, user, assistant, tool }
 
     public var role: Role
     public var content: String
     /// Images are valid on user messages. Kept separately from `content` so existing text-only callers keep their
     /// simple API and their compact JSON representation.
     public var images: [AIImageAttachment]
+    /// Assistant tool calls (OpenAI `tool_calls`). Empty for other roles.
+    public var toolCalls: [AIToolCall]
+    /// Required on `tool` messages: the id of the call this result answers.
+    public var toolCallID: String?
 
-    public init(_ role: Role, _ content: String, images: [AIImageAttachment] = []) {
+    public init(_ role: Role, _ content: String, images: [AIImageAttachment] = [],
+                toolCalls: [AIToolCall] = [], toolCallID: String? = nil) {
         self.role = role
         self.content = content
         self.images = images
+        self.toolCalls = toolCalls
+        self.toolCallID = toolCallID
     }
 
-    private enum CodingKeys: String, CodingKey { case role, content }
+    /// An assistant message that only asks for tools (content may be empty).
+    public static func assistant(content: String = "", toolCalls: [AIToolCall]) -> AIChatMessage {
+        AIChatMessage(.assistant, content, toolCalls: toolCalls)
+    }
+
+    /// A tool result for one call.
+    public static func tool(id: String, content: String) -> AIChatMessage {
+        AIChatMessage(.tool, content, toolCallID: id)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case role, content, toolCalls = "tool_calls", toolCallID = "tool_call_id"
+    }
 
     private enum ContentPart: Encodable {
         case text(String)
@@ -54,9 +74,35 @@ public struct AIChatMessage: Encodable, Equatable, Sendable {
         }
     }
 
+    private struct WireToolCall: Encodable {
+        var id: String
+        var type = "function"
+        var function: Function
+
+        struct Function: Encodable {
+            var name: String
+            var arguments: String
+        }
+    }
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(role, forKey: .role)
+        if role == .tool {
+            try container.encode(toolCallID ?? "", forKey: .toolCallID)
+            try container.encode(content, forKey: .content)
+            return
+        }
+        if !toolCalls.isEmpty {
+            if content.isEmpty {
+                try container.encodeNil(forKey: .content)
+            } else {
+                try container.encode(content, forKey: .content)
+            }
+            let wire = toolCalls.map { WireToolCall(id: $0.id, function: .init(name: $0.name, arguments: $0.arguments)) }
+            try container.encode(wire, forKey: .toolCalls)
+            return
+        }
         guard !images.isEmpty else {
             try container.encode(content, forKey: .content)
             return
@@ -77,19 +123,22 @@ public struct AIChatRequest: Encodable, Equatable, Sendable {
     public var maxTokens: Int?
     /// DeepSeek's switch for thinking before answering: `{"type": "enabled" | "disabled"}`. nil sends nothing.
     public var thinking: Bool?
+    /// Tools the model may call. Omitted from the JSON when empty.
+    public var tools: [AIToolDefinition]
 
     public init(model: String, messages: [AIChatMessage], stream: Bool = true, temperature: Double? = nil,
-                maxTokens: Int? = nil, thinking: Bool? = nil) {
+                maxTokens: Int? = nil, thinking: Bool? = nil, tools: [AIToolDefinition] = []) {
         self.model = model
         self.messages = messages
         self.stream = stream
         self.temperature = temperature
         self.maxTokens = maxTokens
         self.thinking = thinking
+        self.tools = tools
     }
 
     private enum CodingKeys: String, CodingKey {
-        case model, messages, stream, temperature, maxTokens = "max_tokens", thinking
+        case model, messages, stream, temperature, maxTokens = "max_tokens", thinking, tools
     }
 
     private struct Thinking: Encodable {
@@ -105,6 +154,9 @@ public struct AIChatRequest: Encodable, Equatable, Sendable {
         try container.encodeIfPresent(maxTokens, forKey: .maxTokens)
         if let thinking {
             try container.encode(Thinking(type: thinking ? "enabled" : "disabled"), forKey: .thinking)
+        }
+        if !tools.isEmpty {
+            try container.encode(tools, forKey: .tools)
         }
     }
 
@@ -165,4 +217,12 @@ public enum AIConversation {
         filler, and add detail only when it helps. Format with Markdown (short paragraphs, lists, fenced code blocks \
         with a language). Reply in the language of the user's message.
         """
+
+    /// The system prompt plus optional Mac-tool instructions.
+    public static func systemPrompt(_ base: String, macTools: Bool) -> String {
+        let base = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard macTools else { return base }
+        if base.isEmpty { return AIMacToolCatalog.systemAddon }
+        return base + "\n\n" + AIMacToolCatalog.systemAddon
+    }
 }

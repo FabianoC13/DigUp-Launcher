@@ -4,9 +4,10 @@ import SwiftUI
 
 /// Quick AI in the panel: the conversation, with the field as the follow-up box.
 ///
-/// ↩ sends what's typed; with nothing typed it pastes the last answer into the app you came from (or copies it, per
-/// Settings; ⌘↩ does the other). ⌘R regenerates, ⇧⌘R regenerates with the other model, ⌘N starts a new chat, ⌘.
-/// stops, ⇧⌘C copies the answer, ⌘[ / ⌘] step through earlier chats, ↑↓ scroll. ⌘K lists all of it.
+/// ↩ or Tab sends what's typed; with nothing typed, ↩ pastes the last answer into the app you came from (or copies
+/// it, per Settings; ⌘↩ does the other) and Tab does nothing. ⌘R regenerates, ⇧⌘R regenerates with the other model,
+/// ⌘N starts a new chat, ⌘. stops, ⇧⌘C copies the answer, ⌘[ / ⌘] step through earlier chats, ↑↓ scroll. ⌘K lists
+/// all of it.
 final class QuickAIMode: LauncherMode {
     let chat: QuickAIChat
     let scroller = QuickAIScroller()
@@ -48,15 +49,16 @@ final class QuickAIMode: LauncherMode {
         chat.context = context
         let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let isReturn = event.keyCode == 36 || event.keyCode == 76
-        if isReturn, flags.isEmpty {
+        let isTab = event.keyCode == 48
+        if isReturn || isTab, flags.isEmpty {
             let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.isEmpty, chat.pendingImages.isEmpty {
-                deliver(primary: true)
-            } else if text.isEmpty, !chat.pendingImages.isEmpty {
-                send("")
-            } else {
+            if !text.isEmpty || !chat.pendingImages.isEmpty {
                 send(text)
+                return true
             }
+            // Empty Tab stays in the chat (same habit as root Tab, without leaving or inserting a tab).
+            if isTab { return true }
+            deliver(primary: true)
             return true
         }
         if isReturn, flags == .command {
@@ -119,11 +121,11 @@ final class QuickAIMode: LauncherMode {
     var keysHint: String? {
         let typed = !(context?.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         if typed || !chat.pendingImages.isEmpty {
-            return chat.turns.isEmpty ? "↩ Ask   ⌘K Actions" : "↩ Send Follow-up   ⌘K Actions"
+            return chat.turns.isEmpty ? "↩ / Tab Ask   ⌘K Actions" : "↩ / Tab Send   ⌘K Actions"
         }
         if chat.isBusy { return "⌘. Stop   ↑↓ Scroll   ⌘K Actions   Esc Back" }
         if chat.lastTurn?.failure != nil { return "⌘R Retry   ⌘N New Chat   ⌘K Actions" }
-        guard chat.lastAnswer != nil else { return "↩ Ask   Drop an image   ⌘K Actions   Esc Back" }
+        guard chat.lastAnswer != nil else { return "↩ / Tab Ask   Drop an image   ⌘K Actions   Esc Back" }
         let paste = primaryIsPaste ? "↩ Paste" : "⌘↩ Paste"
         return "⌘C Copy   \(paste)   ⌘R Regenerate   ⌘N New Chat   ⌘K Actions"
     }
@@ -136,6 +138,7 @@ final class QuickAIMode: LauncherMode {
         case .waiting: return "\(model) · waiting…"
         case .thinking: return "\(model) · thinking…"
         case .answering: return "\(model) · answering…"
+        case .usingTools: return "\(model) · using your Mac…"
         case .stopped: return "\(model) · stopped"
         case .failed: return "\(model) · failed"
         case .done:
