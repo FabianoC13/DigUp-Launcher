@@ -42,9 +42,10 @@ public struct AIChatMessage: Encodable, Equatable, Sendable {
         AIChatMessage(.assistant, content, toolCalls: toolCalls)
     }
 
-    /// A tool result for one call.
-    public static func tool(id: String, content: String) -> AIChatMessage {
-        AIChatMessage(.tool, content, toolCallID: id)
+    /// A tool result for one call. Pass `images` when the tool attached pictures for the model to see
+    /// (`look_at_image`).
+    public static func tool(id: String, content: String, images: [AIImageAttachment] = []) -> AIChatMessage {
+        AIChatMessage(.tool, content, images: images, toolCallID: id)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -90,7 +91,12 @@ public struct AIChatMessage: Encodable, Equatable, Sendable {
         try container.encode(role, forKey: .role)
         if role == .tool {
             try container.encode(toolCallID ?? "", forKey: .toolCallID)
-            try container.encode(content, forKey: .content)
+            if images.isEmpty {
+                try container.encode(content, forKey: .content)
+            } else {
+                let parts: [ContentPart] = [.text(content)] + images.map { .imageURL($0.dataURL) }
+                try container.encode(parts, forKey: .content)
+            }
             return
         }
         if !toolCalls.isEmpty {

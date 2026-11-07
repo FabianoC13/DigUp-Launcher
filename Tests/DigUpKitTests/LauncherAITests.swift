@@ -237,6 +237,19 @@ import Testing
         #expect(messages[1]["tool_call_id"] as? String == "c1")
     }
 
+    @Test func toolMessagesCanCarryImages() throws {
+        let message = AIChatMessage.tool(id: "c1", content: "Attached photo.",
+                                         images: [AIImageAttachment(dataURL: "data:image/png;base64,abc")])
+        let encoded = try JSONEncoder().encode(message)
+        let json = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        #expect(json["role"] as? String == "tool")
+        let parts = try #require(json["content"] as? [[String: Any]])
+        #expect(parts.count == 2)
+        #expect(parts[0]["type"] as? String == "text")
+        #expect(parts[1]["type"] as? String == "image_url")
+        #expect(AIMacToolCatalog.definitions.contains { $0.name == AIMacToolCatalog.lookAtImage })
+    }
+
     @Test func macPathsExpandHome() {
         #expect(AIMacToolCatalog.resolvePath("~", home: "/Users/fab") == "/Users/fab")
         #expect(AIMacToolCatalog.resolvePath("~/Desktop", home: "/Users/fab") == "/Users/fab/Desktop")
@@ -250,6 +263,8 @@ import Testing
         #expect(!AIMacShellRisk.canDeleteFiles(#"find ~ -maxdepth 2 -name "*.env" 2>/dev/null | head -20"#))
         #expect(!AIMacShellRisk.canDeleteFiles("mv ~/Desktop/a ~/Documents/a"))
         #expect(!AIMacShellRisk.canDeleteFiles("find ~/.Trash -maxdepth 1 2>/dev/null | head"))
+        #expect(!AIMacShellRisk.canDeleteFiles(#"tmp=/tmp/wall_desc; rm -rf "$tmp"; mkdir -p "$tmp"; sips -Z 8 f --out "$tmp/tiny.png""#))
+        #expect(!AIMacShellRisk.canDeleteFiles("rm -rf /var/folders/xx/yy/T/tmp.abc"))
         #expect(AIMacShellRisk.canDeleteFiles("rm -rf ~/Desktop/old"))
         #expect(AIMacShellRisk.canDeleteFiles("trash ~/Desktop/old"))
         #expect(AIMacShellRisk.canDeleteFiles("find . -name '*.tmp' -delete"))

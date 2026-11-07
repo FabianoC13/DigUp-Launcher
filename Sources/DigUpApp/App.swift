@@ -33,19 +33,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         log("launch pid \(getpid()): roots \(settings.roots.map { tildePath($0.path) }) · "
             + "index \(tildePath(settings.indexDirectory.path)) · models \(tildePath(settings.modelsDirectory.path))")
         let (atLogin, why) = Launch.atLogin()   // while the open-application event is still the current one
-        let showWindow = !atLogin && !DebugHooks.drivesUI
-        log("launch: \(atLogin ? "at login" : "opened by hand") (\(why))\(showWindow ? ", showing the window" : "")")
+        // DigUp is the ⌘Space panel, not the big search window. Opened by hand → show the panel once so
+        // launch isn't silent; at login → stay in the menu bar until the hotkey.
+        let showPanel = !atLogin && !DebugHooks.drivesUI
+        log("launch: \(atLogin ? "at login" : "opened by hand") (\(why))\(showPanel ? ", showing the panel" : "")")
 
         let app = AppController(settings: settings)
         self.app = app
         NSApp.mainMenu = Self.makeMainMenu(app)
-        app.start(showWindow: showWindow)
+        app.start(showPanel: showPanel)
         DebugHooks.run(app)
     }
 
-    /// Opening the app again (from Finder or Spotlight) while it runs: show its window.
+    /// Opening the app again (from Finder or Spotlight) while it runs: the ⌘Space panel, not the big window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { app?.showSearchWindow() }
+        if !flag { app?.panel.show() }
         return true
     }
 
@@ -100,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// How DigUp was launched. At login (its login item) it stays in the menu bar; opened by hand (Finder, Spotlight,
-/// Launchpad, after an update) it shows its window, so opening it never looks like nothing happened.
+/// Launchpad, after an update) it shows the ⌘Space panel, so opening it never looks like nothing happened.
 enum Launch {
     /// Whether this is the launch at login, and what says so. Call it while the app finishes launching: the
     /// open-application event is still the current one then.

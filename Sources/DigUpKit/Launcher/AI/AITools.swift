@@ -163,6 +163,7 @@ public enum AIMacToolCatalog {
     public static let movePath = "move_path"
     public static let revealPath = "reveal_path"
     public static let openPath = "open_path"
+    public static let lookAtImage = "look_at_image"
     public static let runShell = "run_shell"
 
     /// Tools offered when Mac access is on.
@@ -176,6 +177,18 @@ public enum AIMacToolCatalog {
                         "path": .object([
                             "type": .string("string"),
                             "description": .string("Absolute path, or ~ / ~/Desktop / ~/Downloads…"),
+                        ]),
+                    ],
+                    required: ["path"])),
+            AIToolDefinition(
+                name: lookAtImage,
+                description: "Load a local image file so you can see and describe it (wallpaper, screenshot, photo). "
+                    + "Use this instead of shell/sips/python when the user asks what an image looks like.",
+                parameters: objectSchema(
+                    properties: [
+                        "path": .object([
+                            "type": .string("string"),
+                            "description": .string("Path to a PNG, JPEG, HEIC, GIF, WebP, TIFF, or BMP file."),
                         ]),
                     ],
                     required: ["path"])),
@@ -248,10 +261,13 @@ public enum AIMacToolCatalog {
 
     /// Extra system instructions when tools are available.
     public static let systemAddon = """
-        You can act on this Mac with tools: list folders, move or trash files, reveal or open paths, and run short \
-        shell commands. Prefer the dedicated file tools for file work. Expand ~ yourself (or pass it as written). \
-        DigUp asks before trashing items or running shell commands that can delete files; list, move, open, reveal, \
-        and read-only shell run without asking. After a tool succeeds, say briefly what you did.
+        You can act on this Mac with tools: list folders, move or trash files, reveal or open paths, look at image \
+        files, and run short shell commands. Prefer the dedicated file tools for file work. Expand ~ yourself (or \
+        pass it as written). DigUp asks before trashing items or running shell commands that can delete files; \
+        list, move, open, reveal, look_at_image, and read-only shell (including clearing /tmp) run without asking. \
+        After tools finish you must always reply with a short answer — never stop on a tool step alone. To describe \
+        a wallpaper, screenshot or photo: find its path if needed, then call look_at_image on that path and describe \
+        what you see — do not guess from sips/python pixel dumps or open it in Preview.
         """
 
     /// Expands `~` and `~/…` against the home directory; absolute paths pass through; relative paths are under home.
@@ -280,8 +296,10 @@ public enum AIMacToolCatalog {
 public enum AIMacShellRisk {
     /// True when DigUp should confirm before running `command`.
     public static func canDeleteFiles(_ command: String) -> Bool {
-        let text = command.lowercased()
+        var text = command.lowercased()
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        // Clearing system temp dirs is safe enough to run without asking (wallpaper/color probes use /tmp).
+        text = stripTempRemovals(text)
         // Match commands, not pathnames (so `find ~/.Trash` does not ask).
         let patterns = [
             #"\brm\b"#,
@@ -303,5 +321,16 @@ public enum AIMacShellRisk {
             #"empty\s+trash"#,
         ]
         return patterns.contains { text.range(of: $0, options: .regularExpression) != nil }
+    }
+
+    /// Drops `rm`/`rmdir` aimed only at `/tmp`, `/var/folders`, `$tmp`, or `$TMPDIR`.
+    private static func stripTempRemovals(_ command: String) -> String {
+        let patterns = [
+            #"\brm\s+(?:-[a-zA-Z]+\s+)*(?:--\s+)?(?:["']?\$(?:tmp|TMPDIR)["']?|["']?/(?:tmp|var/folders)/[^;&|\n]+["']?)"#,
+            #"\brmdir\s+(?:-[a-zA-Z]+\s+)*(?:--\s+)?(?:["']?\$(?:tmp|TMPDIR)["']?|["']?/(?:tmp|var/folders)/[^;&|\n]+["']?)"#,
+        ]
+        return patterns.reduce(command) { partial, pattern in
+            partial.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+        }
     }
 }

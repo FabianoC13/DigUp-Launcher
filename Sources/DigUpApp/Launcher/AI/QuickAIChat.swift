@@ -238,8 +238,15 @@ final class QuickAIChat {
         task?.cancel()
         task = nil
         flush()
+        if turn.answer.isEmpty, !turn.toolSteps.isEmpty {
+            turn.answer = turn.toolSteps.map { "• \($0.lineSummary)" }.joined(separator: "\n")
+        }
         turn.phase = .stopped
-        if turn.answer.isEmpty, turn.reasoning.isEmpty { turn.note = "Stopped before an answer came." }
+        if turn.answer.isEmpty, turn.reasoning.isEmpty {
+            turn.note = "Stopped before an answer came."
+        } else if turn.note == nil {
+            turn.note = "Stopped before the full answer came."
+        }
         lastActivity = Date()
         save()
     }
@@ -380,30 +387,14 @@ final class QuickAIChat {
                                             thinking: endpoint.preset.thinkingSwitch ? preferences.thinking : nil,
                                             tools: tools)
                 let outcome = try await streamRound(request, to: endpoint, into: turn, started: start)
-                guard !Task.isCancelled else { return }
+                if Task.isCancelled {
+                    finishStopped(turn, started: start)
+                    return
+                }
                 switch outcome {
                 case .answered(let reason):
-                    flush()
-                    turn.answerTime = clock.now - start
-                    if turn.answer.isEmpty, turn.toolSteps.isEmpty {
-                        finish(turn, failure: reason == "content_filter" ? .blocked(provider: endpoint.providerName)
-                            : .emptyAnswer(provider: endpoint.providerName))
-                        return
-                    }
-                    if turn.answer.isEmpty, !turn.toolSteps.isEmpty {
-                        turn.answer = turn.toolSteps.map { "• \($0.title): \($0.detail)" }.joined(separator: "\n")
-                    }
-                    switch reason {
-                    case "length": turn.note = "The answer was cut off at the model's length limit."
-                    case "content_filter": turn.note = "\(endpoint.providerName)'s content filter cut the answer short."
-                    default: break
-                    }
-                    turn.phase = .done
-                    lastActivity = Date()
-                    log("quick ai: \(endpoint.model) answered \(turn.answer.count) characters in "
-                        + String(format: "%.1f s", (clock.now - start).quickAISeconds))
-                    save()
-                    QuickAIDebug.answered(self)
+                    finishAnswered(turn, reason: reason, provider: endpoint.providerName, model: endpoint.model,
+                                   started: start)
                     return
                 case .tools(let calls, let partial):
                     flush()
@@ -411,33 +402,94 @@ final class QuickAIChat {
                     turn.phase = .usingTools
                     tick += 1
                     for call in calls {
-                        guard !Task.isCancelled else { return }
-                        let (result, step) = await QuickAIMacTools.run(call, context: context)
+                        if Task.isCancelled {
+                            finishStopped(turn, started: start)
+                            return
+                        }
+                        let step = QuickAIMacTools.makeStep(for: call)
                         turn.toolSteps.append(step)
-                        messages.append(.tool(id: call.id, content: result))
+                        tick += 1
+                        let result = await QuickAIMacTools.run(call, step: step, context: context) { [weak self] in
+                            self?.tick += 1
+                        }
+                        messages.append(.tool(id: call.id, content: result, images: step.visionImages))
+                        // Vision tools need a model that reads images on the next round.
+                        if !step.visionImages.isEmpty {
+                            turn.model = preferences.provider.model(forImages: turn.model)
+                        }
                         tick += 1
                         log("quick ai: tool \(call.name) → \(step.status)")
                     }
                     turn.phase = .waiting
                     if round == Self.maxToolRounds - 1 {
-                        turn.note = "Stopped after \(Self.maxToolRounds) tool rounds."
                         if turn.answer.isEmpty {
-                            turn.answer = turn.toolSteps.map { "• \($0.title): \($0.detail)" }.joined(separator: "\n")
+                            turn.answer = turn.toolSteps.map { "• \($0.lineSummary)" }.joined(separator: "\n")
                         }
-                        turn.phase = .done
-                        turn.answerTime = clock.now - start
-                        lastActivity = Date()
-                        save()
-                        QuickAIDebug.answered(self)
+                        turn.note = "Stopped after \(Self.maxToolRounds) tool rounds."
+                        finishAnswered(turn, reason: nil, provider: endpoint.providerName, model: endpoint.model,
+                                       started: start, alreadyNoted: true)
                         return
                     }
                 }
             }
         } catch {
-            guard !Task.isCancelled, !(error is CancellationError) else { return }
+            if Task.isCancelled || error is CancellationError {
+                finishStopped(turn, started: start)
+                return
+            }
             flush()
             finish(turn, failure: error as? AIFailure ?? .network(error.localizedDescription))
         }
+    }
+
+    /// Normal completion: always leave a visible answer when tools ran.
+    private func finishAnswered(_ turn: QuickAITurn, reason: String?, provider: String, model: String,
+                                started: ContinuousClock.Instant, alreadyNoted: Bool = false) {
+        flush()
+        turn.answerTime = ContinuousClock().now - started
+        if turn.answer.isEmpty, turn.toolSteps.isEmpty {
+            finish(turn, failure: reason == "content_filter" ? .blocked(provider: provider)
+                : .emptyAnswer(provider: provider))
+            return
+        }
+        if turn.answer.isEmpty, !turn.toolSteps.isEmpty {
+            turn.answer = turn.toolSteps.map { "• \($0.lineSummary)" }.joined(separator: "\n")
+        }
+        if !alreadyNoted {
+            switch reason {
+            case "length": turn.note = "The answer was cut off at the model's length limit."
+            case "content_filter": turn.note = "\(provider)'s content filter cut the answer short."
+            default: break
+            }
+        }
+        turn.phase = .done
+        lastActivity = Date()
+        log("quick ai: \(model) answered \(turn.answer.count) characters in "
+            + String(format: "%.1f s", (ContinuousClock().now - started).quickAISeconds))
+        save()
+        QuickAIDebug.answered(self)
+        if reopenWhenKeyArrives { reopen() }
+    }
+
+    /// Cancelled mid-turn: keep any tool results as the answer so the chat never ends blank.
+    private func finishStopped(_ turn: QuickAITurn, started: ContinuousClock.Instant) {
+        flush()
+        if case .stopped = turn.phase { return }
+        if case .done = turn.phase { return }
+        if case .failed = turn.phase { return }
+        if turn.answer.isEmpty, !turn.toolSteps.isEmpty {
+            turn.answer = turn.toolSteps.map { "• \($0.lineSummary)" }.joined(separator: "\n")
+        }
+        turn.phase = .stopped
+        if turn.answer.isEmpty, turn.reasoning.isEmpty {
+            turn.note = "Stopped before an answer came."
+        } else if turn.note == nil {
+            turn.note = "Stopped before the full answer came."
+        }
+        turn.answerTime = ContinuousClock().now - started
+        lastActivity = Date()
+        save()
+        QuickAIDebug.answered(self)
     }
 
     private enum RoundOutcome {

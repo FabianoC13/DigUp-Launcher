@@ -57,8 +57,8 @@ final class AppController {
         updates = Updates(model: model)
     }
 
-    /// `showWindow`: opened by hand (not at login), so the search window comes up once the app is set up.
-    func start(showWindow: Bool = false) {
+    /// `showPanel`: opened by hand (not at login), so the ⌘Space panel comes up once the app is set up.
+    func start(showPanel: Bool = false) {
         panel = SearchPanelController(app: self)
         launcher.panel = panel
         launcher.start()
@@ -95,7 +95,7 @@ final class AppController {
         } else {
             // Set up already (the go-ahead came with onboarding), so a missing model just downloads.
             if !download.isReady { download.start() }
-            if showWindow { showSearchWindow() }
+            if showPanel { panel.show() }
         }
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification] {
             observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil,

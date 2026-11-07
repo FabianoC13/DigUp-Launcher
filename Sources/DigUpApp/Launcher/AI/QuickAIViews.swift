@@ -218,55 +218,195 @@ private struct QuickAITurnView: View {
     }
 }
 
-/// Mac tool calls DigUp ran for this turn (list folder, trash, shell…).
+/// Mac tool activity, Claude-style: quiet rows. Consecutive same-tool steps collapse into one line.
 private struct QuickAIToolStepsView: View {
     let steps: [QuickAIToolStep]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(steps) { step in
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: symbol(for: step.status))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(color(for: step.status))
-                        .frame(width: 14)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(step.title)
-                            .font(.system(size: 12, weight: .semibold))
-                        if !step.detail.isEmpty {
-                            Text(step.detail)
-                                .font(.system(size: 11.5).monospaced())
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                                .lineLimit(6)
-                        }
-                    }
-                    Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(groups, id: \.id) { group in
+                if group.steps.count == 1, let step = group.steps.first {
+                    QuickAIToolStepRow(step: step)
+                } else {
+                    QuickAIToolStepGroupRow(steps: group.steps)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.05)))
             }
         }
+        .padding(.vertical, 2)
     }
 
-    private func symbol(for status: QuickAIToolStep.Status) -> String {
+    /// Consecutive steps with the same tool name share one row (e.g. eight "Run shell" → "Shell ×8").
+    private var groups: [ToolStepGroup] {
+        var groups: [ToolStepGroup] = []
+        for step in steps {
+            if let last = groups.last, last.name == step.name {
+                groups[groups.count - 1].steps.append(step)
+            } else {
+                groups.append(ToolStepGroup(name: step.name, steps: [step]))
+            }
+        }
+        return groups
+    }
+
+    private struct ToolStepGroup: Identifiable {
+        var id: UUID { steps.first?.id ?? UUID() }
+        let name: String
+        var steps: [QuickAIToolStep]
+    }
+}
+
+private struct QuickAIToolStepRow: View {
+    @Bindable var step: QuickAIToolStep
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                guard hasOutput else { return }
+                withAnimation(.easeOut(duration: 0.12)) { step.expanded.toggle() }
+            } label: {
+                QuickAIToolChrome(status: step.status, title: step.title, detail: step.detail,
+                                  hasOutput: hasOutput, expanded: step.expanded)
+            }
+            .buttonStyle(.plain)
+            .disabled(!hasOutput)
+
+            if step.expanded, !step.output.isEmpty {
+                QuickAIToolOutput(text: step.output)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var hasOutput: Bool { !step.output.isEmpty }
+}
+
+/// Several identical tools in a row → one quiet summary; expand to read every output.
+private struct QuickAIToolStepGroupRow: View {
+    let steps: [QuickAIToolStep]
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                guard hasOutput else { return }
+                withAnimation(.easeOut(duration: 0.12)) { expanded.toggle() }
+            } label: {
+                QuickAIToolChrome(status: status, title: title, detail: "",
+                                  hasOutput: hasOutput, expanded: expanded)
+            }
+            .buttonStyle(.plain)
+            .disabled(!hasOutput)
+
+            if expanded {
+                ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                    if !step.output.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            if steps.count > 1 {
+                                Text("\(index + 1)")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.quaternary)
+                                    .padding(.leading, 19)
+                            }
+                            QuickAIToolOutput(text: step.output)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var title: String {
+        let count = steps.count
+        let base = steps.first?.title ?? "Tool"
+        if count <= 1 { return base }
+        // "Run shell" → "Shell ×8"; keep other titles as "List folder ×3".
+        let short = base.hasPrefix("Run ") ? String(base.dropFirst(4)) : base
+        return "\(short) ×\(count)"
+    }
+
+    private var hasOutput: Bool { steps.contains { !$0.output.isEmpty } }
+
+    private var status: QuickAIToolStep.Status {
+        if steps.contains(where: { $0.status == .running }) { return .running }
+        if steps.contains(where: { $0.status == .failed }) { return .failed }
+        if steps.contains(where: { $0.status == .denied }) { return .denied }
+        return .done
+    }
+}
+
+private struct QuickAIToolChrome: View {
+    let status: QuickAIToolStep.Status
+    let title: String
+    let detail: String
+    let hasOutput: Bool
+    let expanded: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Group {
+                if status == .running {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+            }
+            .frame(width: 12, height: 12)
+
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer(minLength: 0)
+
+            if hasOutput {
+                Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.quaternary)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var symbol: String {
         switch status {
         case .running: "ellipsis.circle"
-        case .done: "checkmark.circle.fill"
-        case .failed: "xmark.circle.fill"
-        case .denied: "hand.raised.fill"
+        case .done: "checkmark"
+        case .failed: "xmark"
+        case .denied: "hand.raised"
         }
     }
 
-    private func color(for status: QuickAIToolStep.Status) -> Color {
+    private var color: Color {
         switch status {
-        case .running: .secondary
-        case .done: .green
+        case .running, .done: .secondary
         case .failed: .red
         case .denied: .orange
         }
+    }
+}
+
+private struct QuickAIToolOutput: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11).monospaced())
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 19)
+            .padding(.vertical, 4)
     }
 }
 

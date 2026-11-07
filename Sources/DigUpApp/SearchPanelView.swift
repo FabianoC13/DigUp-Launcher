@@ -98,7 +98,13 @@ struct SearchPanelView: View {
             CodeHint(controller: controller)
         } else if controller.results.isEmpty, controller.items.isEmpty {
             VStack(spacing: 8) {
-                if controller.mode != nil || controller.phase == .launcher || controller.phase == .empty {
+                if controller.mode == nil, controller.phase == .empty {
+                    Text("No favorites yet").font(.system(size: 15, weight: .semibold))
+                    Text("Find something, press ⌘K, then Add to Favorites (⇧⌘F).")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Text("Or press Tab to ask AI.").foregroundStyle(.secondary)
+                } else if controller.mode != nil || controller.phase == .launcher {
                     Text("No results").font(.system(size: 15, weight: .semibold))
                     if controller.mode == nil {
                         Text("Press Tab to ask AI instead.").foregroundStyle(.secondary)
@@ -204,7 +210,7 @@ struct SearchPanelView: View {
             return controller.phase == .codeOff ? "Code search is off" : "Searching your code"
         case .meaning, .empty:
             if controller.phase == .empty {
-                return controller.items.isEmpty ? "" : "Favorites and suggestions"
+                return controller.items.isEmpty ? "" : "Favorites"
             }
             if controller.isCode, let indexing = controller.model.status.code.indexing, indexing.total > 0 {
                 return "Still reading code (\(Int(Double(indexing.done) / Double(indexing.total) * 100))%): some isn't in yet"

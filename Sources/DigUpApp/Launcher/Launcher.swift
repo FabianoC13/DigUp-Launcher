@@ -10,11 +10,10 @@ import SwiftUI
 protocol LauncherProvider: AnyObject {
     /// The prefix of every item id it makes ("app", "cmd", "calc").
     var id: String { get }
-    /// Root-search items for what's typed. Usually nothing when `query.isEmpty` (favorites and suggestions come from
-    /// `item(id:)`).
+    /// Root-search items for what's typed. Usually nothing when `query.isEmpty` (favorites come from `item(id:)`).
     func items(for query: LauncherQuery) async -> [LauncherItem]
-    /// The item with this id, as it is now, for favorites, suggestions, aliases and hotkeys; nil when it's gone or
-    /// can't be shown out of a search.
+    /// The item with this id, as it is now, for favorites, aliases and hotkeys; nil when it's gone or can't be shown
+    /// out of a search.
     func item(id: String) async -> LauncherItem?
 }
 
@@ -70,7 +69,7 @@ extension LauncherFeature {
 }
 
 /// The root search: runs every provider for what's typed, ranks what comes back with what it has learned
-/// (`LauncherUsage`: frecency, picks, aliases), and shows favorites and suggestions when nothing is typed.
+/// (`LauncherUsage`: frecency, picks, aliases), and shows favorites when nothing is typed.
 final class Launcher {
     private(set) var providers: [any LauncherProvider] = []
     private(set) var usage: LauncherUsage
@@ -94,7 +93,6 @@ final class Launcher {
     static let firstUpdateWait: Duration = .milliseconds(40)
     /// A provider slower than this is logged (each keystroke runs them all).
     static let slowProvider: Duration = .milliseconds(8)
-    static let suggestionsLimit = 8
 
     init() {
         try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
@@ -198,19 +196,12 @@ final class Launcher {
         }
     }
 
-    /// With nothing typed: favorites, then what you use most.
+    /// With nothing typed: only favorites you pinned (⌘K → Add to Favorites). No automatic recommendations.
     func suggestions() async -> [LauncherItem] {
         var items: [LauncherItem] = []
-        var seen = Set<String>()
         for id in usage.favorites {
             guard var item = await item(id: id) else { continue }
             item.section = .favorites
-            items.append(item)
-            seen.insert(id)
-        }
-        for id in usage.recent(limit: Self.suggestionsLimit * 2) where !seen.contains(id) {
-            guard items.count - seen.count < Self.suggestionsLimit, var item = await item(id: id) else { continue }
-            item.section = .suggestions
             items.append(item)
         }
         return items

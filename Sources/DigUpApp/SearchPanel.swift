@@ -133,7 +133,7 @@ final class SearchPanelController {
         if let row = selectedRow { return fileActions(row) }
         return []
     }
-    /// The list has something to show: results, a mode, or suggestions with nothing typed.
+    /// The list has something to show: results, a mode, or favorites with nothing typed.
     var showsList: Bool { phase != .empty || mode != nil || !items.isEmpty }
     var rows: [ResultRow] { results.groups.flatMap(\.rows) + (showWeaker ? results.weaker : []) }
     var selectedRow: ResultRow? { rows.first { $0.id == selection } }
@@ -179,7 +179,7 @@ final class SearchPanelController {
             field.currentEditor()?.selectAll(nil)   // like Spotlight: the last query, selected
         }
         installKeyMonitor()
-        // Favorites and suggestions with nothing typed (and the last query's results otherwise, fresh).
+        // Favorites with nothing typed (and the last query's results otherwise, fresh).
         if !wasVisible, mode == nil { runLauncher(query, generation: generation) }
         let shown = Date()
         DispatchQueue.main.async {
@@ -204,7 +204,10 @@ final class SearchPanelController {
         Thumbnails.shared.clear()
         Previews.shared.clear()
         actionsOpen = false
-        if !modes.isEmpty { popToRoot() }
+        // Keep Quick AI open (hidden) while it's mid-answer or running a Mac tool. Opening a file, Finder, or
+        // another app used to pop the mode and cancel the turn with "Stopped before an answer came."
+        let keepBusyQuickAI = (modes.last as? QuickAIMode)?.chat.isBusy == true
+        if !modes.isEmpty, !keepBusyQuickAI { popToRoot() }
         guard let window, window.isVisible, !fading else { return }
         if !NSApp.isActive {
             // The usual case (not activated): gone at once, so the keys are back in the app you were in before
