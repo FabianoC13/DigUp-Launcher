@@ -66,6 +66,30 @@ struct SearchPanelView: View {
                     .frame(width: 24)
                     .help(controller.isCode ? "Searching your code" : "")
             }
+            // Quick AI: pending images sit in the field row, next to the text you're typing.
+            if let quickAI = controller.mode as? QuickAIMode {
+                let _ = quickAI.chat.tick
+                ForEach(quickAI.chat.pendingImages) { image in
+                    ZStack(alignment: .topTrailing) {
+                        Image(nsImage: image.preview)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 36, height: 36)
+                            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        Button {
+                            quickAI.chat.removePendingImage(image.id)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .black.opacity(0.55))
+                                .font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 4, y: -4)
+                        .help("Remove \(image.name)")
+                    }
+                }
+            }
             // With code search on, one example is code's: nothing else in the panel shows "code:".
             SearchField(text: $controller.query, fontSize: 22,
                         placeholder: controller.mode?.placeholder ?? (controller.model.hasCode

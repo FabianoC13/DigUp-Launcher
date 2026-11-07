@@ -164,6 +164,7 @@ public enum AIMacToolCatalog {
     public static let revealPath = "reveal_path"
     public static let openPath = "open_path"
     public static let lookAtImage = "look_at_image"
+    public static let lookAtScreen = "look_at_screen"
     public static let runShell = "run_shell"
 
     /// Tools offered when Mac access is on.
@@ -182,8 +183,8 @@ public enum AIMacToolCatalog {
                     required: ["path"])),
             AIToolDefinition(
                 name: lookAtImage,
-                description: "Load a local image file so you can see and describe it (wallpaper, screenshot, photo). "
-                    + "Use this instead of shell/sips/python when the user asks what an image looks like.",
+                description: "Load a local image file so you can see and describe it (a photo, a named screenshot file, "
+                    + "or the wallpaper image file). Use this for a specific file path — not for what's on screen now.",
                 parameters: objectSchema(
                     properties: [
                         "path": .object([
@@ -192,6 +193,12 @@ public enum AIMacToolCatalog {
                         ]),
                     ],
                     required: ["path"])),
+            AIToolDefinition(
+                name: lookAtScreen,
+                description: "Capture what's on the display right now (desktop, widgets, open windows) and look at it. "
+                    + "Use this for questions about the screen, desktop, widgets, or the visible background — never "
+                    + "reuse an old screenshot from Desktop/Downloads for that.",
+                parameters: objectSchema(properties: [:], required: [])),
             AIToolDefinition(
                 name: trashPath,
                 description: "Move a file or folder to the Trash.",
@@ -262,12 +269,16 @@ public enum AIMacToolCatalog {
     /// Extra system instructions when tools are available.
     public static let systemAddon = """
         You can act on this Mac with tools: list folders, move or trash files, reveal or open paths, look at image \
-        files, and run short shell commands. Prefer the dedicated file tools for file work. Expand ~ yourself (or \
-        pass it as written). DigUp asks before trashing items or running shell commands that can delete files; \
-        list, move, open, reveal, look_at_image, and read-only shell (including clearing /tmp) run without asking. \
-        After tools finish you must always reply with a short answer — never stop on a tool step alone. To describe \
-        a wallpaper, screenshot or photo: find its path if needed, then call look_at_image on that path and describe \
-        what you see — do not guess from sips/python pixel dumps or open it in Preview.
+        files, capture the screen, and run short shell commands. Prefer the dedicated file tools for file work. \
+        Expand ~ yourself (or pass it as written). DigUp asks before trashing items or running shell commands that \
+        can delete files; list, move, open, reveal, look_at_image, look_at_screen, and read-only shell (including \
+        clearing /tmp) run without asking. After tools finish you must always reply with a short answer — never stop \
+        on a tool step alone. \
+        What's on screen / the desktop / widgets / "my background" as it looks right now: call look_at_screen once, \
+        then describe what you see. Do not dig up old screenshots from Desktop or Downloads for that — those are \
+        stale files, not the live display. \
+        A specific photo or image file the user named (or the wallpaper image file itself): find its path if needed, \
+        then look_at_image. Do not guess from sips/python pixel dumps or open it in Preview.
         """
 
     /// Expands `~` and `~/…` against the home directory; absolute paths pass through; relative paths are under home.

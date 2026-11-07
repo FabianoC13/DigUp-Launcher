@@ -248,6 +248,8 @@ import Testing
         #expect(parts[0]["type"] as? String == "text")
         #expect(parts[1]["type"] as? String == "image_url")
         #expect(AIMacToolCatalog.definitions.contains { $0.name == AIMacToolCatalog.lookAtImage })
+        #expect(AIMacToolCatalog.definitions.contains { $0.name == AIMacToolCatalog.lookAtScreen })
+        #expect(AIMacToolCatalog.systemAddon.contains("look_at_screen"))
     }
 
     @Test func macPathsExpandHome() {

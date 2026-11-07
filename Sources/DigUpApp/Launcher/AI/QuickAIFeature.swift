@@ -32,6 +32,8 @@ enum QuickAIFeature: LauncherFeature {
         let chat = QuickAIChat.shared
         chat.context = context
         chat.prepareForOpening()
+        // Clear before push so the Tab prompt isn't saved as rootQuery and restored when DigUp reopens.
+        context.query = ""
         context.push(QuickAIMode(chat: chat))
         if !prompt.isEmpty { chat.ask(prompt) }
         Task { await QuickAIHistory.shared.load() }

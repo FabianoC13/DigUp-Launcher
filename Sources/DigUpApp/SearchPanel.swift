@@ -264,7 +264,9 @@ final class SearchPanelController {
             results = .empty
             selection = rowIDs.first
             phase = .empty
-            resizeWindow()
+            // Favorites are loading via runLauncher — wait for showItems to size the window. Shrinking now draws
+            // the list in a 56pt frame (squashed rows) until that callback runs.
+            if launcherTasks.isEmpty { resizeWindow() }
             return
         }
         // One or two letters: an app or a command, not something to look for in files by meaning.
@@ -403,12 +405,16 @@ final class SearchPanelController {
     /// Back one mode (to the root search from the first).
     func popMode() {
         guard let popped = modes.popLast() else { return }
+        let leavingQuickAI = popped is QuickAIMode
         popped.didClose()
         actionsOpen = false
         items = []
+        // Quick AI consumed whatever was typed (question or unsent follow-up): don't put it back in the root field.
+        if leavingQuickAI, modes.isEmpty { rootQuery = "" }
         let restore = modes.isEmpty ? rootQuery : ""
+        // queryChanged / showItems resize. Don't shrink here while items are still empty — that briefly lays the
+        // favorites list out in the search-field height (Esc from Quick AI looked like a flat Clipboard strip).
         if query == restore { queryChanged() } else { query = restore }
-        resizeWindow()
     }
 
     func popToRoot() {
@@ -601,6 +607,10 @@ final class SearchPanelController {
         if event.keyCode == 53 {  // Esc
             if previewing {
                 QLPreviewPanel.shared().orderOut(nil)
+            } else if let quickAI = mode as? QuickAIMode {
+                // Leave DigUp entirely — don't drop back on favorites / Clipboard History.
+                if quickAI.chat.isBusy { quickAI.chat.stop() }
+                dismiss()
             } else if mode != nil {
                 popMode()
             } else {
@@ -839,12 +849,18 @@ final class SearchPanelController {
         guard let window else { return }
         let height = desiredHeight
         guard abs(window.frame.height - height) > 0.5 else { return }
-        // Not in the middle of a SwiftUI update: resizing from inside one sizes the view wrong.
-        DispatchQueue.main.async {
+        let apply = {
             var frame = window.frame
             frame.origin.y += frame.height - height
             frame.size.height = height
             window.setFrame(frame, display: true)
+        }
+        // Grow immediately so a list never draws in the short search-field frame. Shrink on the next turn —
+        // resizing down from inside a SwiftUI update can size the view wrong.
+        if height > window.frame.height {
+            apply()
+        } else {
+            DispatchQueue.main.async(execute: apply)
         }
     }
 

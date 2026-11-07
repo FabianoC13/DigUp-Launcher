@@ -83,6 +83,8 @@ enum QuickAIMacTools {
                 step.detail = result
             case AIMacToolCatalog.lookAtImage:
                 result = try lookAtImage(args: args, step: step)
+            case AIMacToolCatalog.lookAtScreen:
+                result = try await lookAtScreen(step: step, context: context)
             case AIMacToolCatalog.runShell:
                 let command = args["command"]?.string ?? preview
                 if AIMacShellRisk.canDeleteFiles(command) {
@@ -192,6 +194,43 @@ enum QuickAIMacTools {
         step.visionImages = [pending.attachment]
         step.detail = tilde(url.path)
         return "Attached \(tilde(url.path)) for you to see. Describe what is in the image."
+    }
+
+    /// Fresh display capture for desktop / widget / "what's on screen" questions (not an old Desktop PNG).
+    private static func lookAtScreen(step: QuickAIToolStep, context: LauncherContext?) async throws -> String {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("digup-screen-\(UUID().uuidString).png", isDirectory: false)
+        let wasVisible = await MainActor.run { context?.isPanelVisible ?? false }
+        if wasVisible {
+            await MainActor.run { context?.hide() }
+            try await Task.sleep(for: .milliseconds(180))
+        }
+        defer {
+            if wasVisible {
+                Task { @MainActor in context?.show() }
+            }
+            try? FileManager.default.removeItem(at: url)
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", url.path]
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            throw ToolError("Couldn't run screencapture (\(error.localizedDescription)).")
+        }
+        guard process.terminationStatus == 0, FileManager.default.fileExists(atPath: url.path) else {
+            throw ToolError(
+                "Screen capture failed. Allow DigUp under System Settings → Privacy & Security → Screen Recording, then try again.")
+        }
+        guard let pending = QuickAIImages.fromFile(url) else {
+            throw ToolError("Captured the screen but couldn't read the image.")
+        }
+        step.visionImages = [pending.attachment]
+        step.detail = "Display"
+        return "Attached a fresh screenshot of the display. Describe what is on screen (desktop, widgets, windows)."
     }
 
     /// Runs the shell command, streaming stdout/stderr into `step.output` as bytes arrive.
@@ -318,6 +357,7 @@ enum QuickAIMacTools {
         case AIMacToolCatalog.revealPath: "Reveal in Finder"
         case AIMacToolCatalog.openPath: "Open"
         case AIMacToolCatalog.lookAtImage: "Look at image"
+        case AIMacToolCatalog.lookAtScreen: "Look at screen"
         case AIMacToolCatalog.runShell: "Run shell"
         default: name
         }
@@ -328,6 +368,8 @@ enum QuickAIMacTools {
         case AIMacToolCatalog.listDirectory, AIMacToolCatalog.trashPath,
              AIMacToolCatalog.revealPath, AIMacToolCatalog.openPath, AIMacToolCatalog.lookAtImage:
             return tilde(AIMacToolCatalog.resolvePath(args["path"]?.string ?? "") ?? args["path"]?.string ?? "")
+        case AIMacToolCatalog.lookAtScreen:
+            return "Display"
         case AIMacToolCatalog.movePath:
             let from = tilde(AIMacToolCatalog.resolvePath(args["from"]?.string ?? "") ?? args["from"]?.string ?? "")
             let to = tilde(AIMacToolCatalog.resolvePath(args["to"]?.string ?? "") ?? args["to"]?.string ?? "")

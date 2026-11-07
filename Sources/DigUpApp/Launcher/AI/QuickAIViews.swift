@@ -21,9 +21,6 @@ struct QuickAIConversationView: View {
             VStack(alignment: .leading, spacing: 22) {
                 QuickAICreditsBar()
                     .onAppear { QuickAICredits.shared.refresh() }
-                if !chat.pendingImages.isEmpty {
-                    QuickAIPendingImagesView(chat: chat)
-                }
                 if chat.turns.isEmpty {
                     QuickAIEmptyState(chat: chat)
                 }
@@ -44,48 +41,6 @@ struct QuickAIConversationView: View {
         .onChange(of: chat.isBusy) { _, busy in
             if !busy { QuickAICredits.shared.refresh() }
         }
-    }
-}
-
-/// Thumbnails of images waiting to go with the next question; × removes one before send.
-private struct QuickAIPendingImagesView: View {
-    let chat: QuickAIChat
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Attached · ↩ / Tab to send")
-                .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(chat.pendingImages) { image in
-                        ZStack(alignment: .topTrailing) {
-                            Image(nsImage: image.preview)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 72, height: 72)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            Button {
-                                chat.removePendingImage(image.id)
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, .black.opacity(0.55))
-                                    .font(.system(size: 16))
-                            }
-                            .buttonStyle(.plain)
-                            .offset(x: 4, y: -4)
-                            .help("Remove \(image.name)")
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.06)))
     }
 }
 
@@ -218,24 +173,35 @@ private struct QuickAITurnView: View {
     }
 }
 
-/// Mac tool activity, Claude-style: quiet rows. Consecutive same-tool steps collapse into one line.
+/// Mac tool activity as one sequence: a continuous rail behind the marks, every step the same brightness.
+/// Consecutive same-tool steps collapse into one line (e.g. eight shells → "Shell ×8").
 private struct QuickAIToolStepsView: View {
     let steps: [QuickAIToolStep]
 
+    private let railWidth: CGFloat = 14
+    private let markSize: CGFloat = 14
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(groups, id: \.id) { group in
-                if group.steps.count == 1, let step = group.steps.first {
-                    QuickAIToolStepRow(step: step)
-                } else {
-                    QuickAIToolStepGroupRow(steps: group.steps)
-                }
+        let rows = groups
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(rows) { group in
+                QuickAIToolSequenceRow(group: group, railWidth: railWidth, markSize: markSize)
+            }
+        }
+        .background(alignment: .leading) {
+            // One line from the first mark through the last — reads as a single sequence.
+            if rows.count > 1 {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.35))
+                    .frame(width: 1.5)
+                    .padding(.leading, (railWidth - 1.5) / 2)
+                    .padding(.top, markSize / 2 + 2)
+                    .padding(.bottom, markSize / 2 + 2)
             }
         }
         .padding(.vertical, 2)
     }
 
-    /// Consecutive steps with the same tool name share one row (e.g. eight "Run shell" → "Shell ×8").
     private var groups: [ToolStepGroup] {
         var groups: [ToolStepGroup] = []
         for step in steps {
@@ -247,166 +213,123 @@ private struct QuickAIToolStepsView: View {
         }
         return groups
     }
-
-    private struct ToolStepGroup: Identifiable {
-        var id: UUID { steps.first?.id ?? UUID() }
-        let name: String
-        var steps: [QuickAIToolStep]
-    }
 }
 
-private struct QuickAIToolStepRow: View {
-    @Bindable var step: QuickAIToolStep
+private struct ToolStepGroup: Identifiable {
+    var id: UUID { steps.first?.id ?? UUID() }
+    let name: String
+    var steps: [QuickAIToolStep]
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button {
-                guard hasOutput else { return }
-                withAnimation(.easeOut(duration: 0.12)) { step.expanded.toggle() }
-            } label: {
-                QuickAIToolChrome(status: step.status, title: step.title, detail: step.detail,
-                                  hasOutput: hasOutput, expanded: step.expanded)
-            }
-            .buttonStyle(.plain)
-            .disabled(!hasOutput)
-
-            if step.expanded, !step.output.isEmpty {
-                QuickAIToolOutput(text: step.output)
-            }
-        }
-        .padding(.vertical, 3)
-    }
-
-    private var hasOutput: Bool { !step.output.isEmpty }
-}
-
-/// Several identical tools in a row → one quiet summary; expand to read every output.
-private struct QuickAIToolStepGroupRow: View {
-    let steps: [QuickAIToolStep]
-    @State private var expanded = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button {
-                guard hasOutput else { return }
-                withAnimation(.easeOut(duration: 0.12)) { expanded.toggle() }
-            } label: {
-                QuickAIToolChrome(status: status, title: title, detail: "",
-                                  hasOutput: hasOutput, expanded: expanded)
-            }
-            .buttonStyle(.plain)
-            .disabled(!hasOutput)
-
-            if expanded {
-                ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
-                    if !step.output.isEmpty {
-                        VStack(alignment: .leading, spacing: 2) {
-                            if steps.count > 1 {
-                                Text("\(index + 1)")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.quaternary)
-                                    .padding(.leading, 19)
-                            }
-                            QuickAIToolOutput(text: step.output)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 3)
-    }
-
-    private var title: String {
-        let count = steps.count
+    var title: String {
         let base = steps.first?.title ?? "Tool"
-        if count <= 1 { return base }
-        // "Run shell" → "Shell ×8"; keep other titles as "List folder ×3".
+        guard steps.count > 1 else { return base }
         let short = base.hasPrefix("Run ") ? String(base.dropFirst(4)) : base
-        return "\(short) ×\(count)"
+        return "\(short) ×\(steps.count)"
     }
 
-    private var hasOutput: Bool { steps.contains { !$0.output.isEmpty } }
+    var detail: String {
+        steps.count == 1 ? (steps.first?.detail ?? "") : ""
+    }
 
-    private var status: QuickAIToolStep.Status {
+    var status: QuickAIToolStep.Status {
         if steps.contains(where: { $0.status == .running }) { return .running }
         if steps.contains(where: { $0.status == .failed }) { return .failed }
         if steps.contains(where: { $0.status == .denied }) { return .denied }
         return .done
     }
+
+    var hasOutput: Bool { steps.contains { !$0.output.isEmpty } }
 }
 
-private struct QuickAIToolChrome: View {
-    let status: QuickAIToolStep.Status
-    let title: String
-    let detail: String
-    let hasOutput: Bool
-    let expanded: Bool
+private struct QuickAIToolSequenceRow: View {
+    let group: ToolStepGroup
+    let railWidth: CGFloat
+    let markSize: CGFloat
+    @State private var expanded = false
 
     var body: some View {
-        HStack(spacing: 7) {
-            Group {
-                if status == .running {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: symbol)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(color)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                guard group.hasOutput else { return }
+                withAnimation(.easeOut(duration: 0.12)) { expanded.toggle() }
+            } label: {
+                HStack(alignment: .center, spacing: 8) {
+                    statusMark
+                        .frame(width: railWidth, height: markSize)
+                    Text(group.title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.secondary)
+                    if !group.detail.isEmpty {
+                        Text(group.detail)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.secondary.opacity(0.7))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Spacer(minLength: 0)
+                    if group.hasOutput {
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(Color.secondary.opacity(0.45))
+                    }
+                }
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                ForEach(Array(group.steps.enumerated()), id: \.element.id) { index, step in
+                    if !step.output.isEmpty {
+                        HStack(alignment: .top, spacing: 8) {
+                            Color.clear.frame(width: railWidth)
+                            VStack(alignment: .leading, spacing: 2) {
+                                if group.steps.count > 1 {
+                                    Text("\(index + 1)")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(Color.secondary.opacity(0.45))
+                                }
+                                Text(step.output)
+                                    .font(.system(size: 11).monospaced())
+                                    .foregroundStyle(Color.secondary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 2)
+                            }
+                        }
+                        .padding(.bottom, 4)
+                    }
                 }
             }
-            .frame(width: 12, height: 12)
-
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            if !detail.isEmpty {
-                Text(detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-
-            Spacer(minLength: 0)
-
-            if hasOutput {
-                Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.quaternary)
-            }
         }
-        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var statusMark: some View {
+        if group.status == .running {
+            ProgressView().controlSize(.mini)
+        } else {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(markColor)
+        }
     }
 
     private var symbol: String {
-        switch status {
-        case .running: "ellipsis.circle"
-        case .done: "checkmark"
-        case .failed: "xmark"
-        case .denied: "hand.raised"
+        switch group.status {
+        case .running: "ellipsis.circle.fill"
+        case .done: "checkmark.circle.fill"
+        case .failed: "xmark.circle.fill"
+        case .denied: "hand.raised.circle.fill"
         }
     }
 
-    private var color: Color {
-        switch status {
-        case .running, .done: .secondary
+    private var markColor: Color {
+        switch group.status {
+        case .running, .done: Color.secondary
         case .failed: .red
         case .denied: .orange
         }
-    }
-}
-
-private struct QuickAIToolOutput: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 11).monospaced())
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 19)
-            .padding(.vertical, 4)
     }
 }
 

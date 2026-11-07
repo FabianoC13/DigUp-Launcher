@@ -123,9 +123,9 @@ final class QuickAIMode: LauncherMode {
         if typed || !chat.pendingImages.isEmpty {
             return chat.turns.isEmpty ? "↩ / Tab Ask   ⌘K Actions" : "↩ / Tab Send   ⌘K Actions"
         }
-        if chat.isBusy { return "⌘. Stop   ↑↓ Scroll   ⌘K Actions   Esc Back" }
+        if chat.isBusy { return "⌘. Stop   ↑↓ Scroll   ⌘K Actions   Esc Close" }
         if chat.lastTurn?.failure != nil { return "⌘R Retry   ⌘N New Chat   ⌘K Actions" }
-        guard chat.lastAnswer != nil else { return "↩ / Tab Ask   Drop an image   ⌘K Actions   Esc Back" }
+        guard chat.lastAnswer != nil else { return "↩ / Tab Ask   Drop an image   ⌘K Actions   Esc Close" }
         let paste = primaryIsPaste ? "↩ Paste" : "⌘↩ Paste"
         return "⌘C Copy   \(paste)   ⌘R Regenerate   ⌘N New Chat   ⌘K Actions"
     }
