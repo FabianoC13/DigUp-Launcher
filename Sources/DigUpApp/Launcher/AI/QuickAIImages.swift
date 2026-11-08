@@ -7,12 +7,15 @@ import UniformTypeIdentifiers
 struct QuickAIPendingImage: Identifiable {
     let id: UUID
     let name: String
+    /// Absolute path with `~` when the image came from a file on disk; nil for clipboard / pasteboard bits.
+    let path: String?
     let preview: NSImage
     let attachment: AIImageAttachment
 
-    init(id: UUID = UUID(), name: String, preview: NSImage, attachment: AIImageAttachment) {
+    init(id: UUID = UUID(), name: String, path: String? = nil, preview: NSImage, attachment: AIImageAttachment) {
         self.id = id
         self.name = name
+        self.path = path
         self.preview = preview
         self.attachment = attachment
     }
@@ -77,14 +80,21 @@ enum QuickAIImages {
         let accessed = url.startAccessingSecurityScopedResource()
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return fromData(data, name: url.lastPathComponent)
+        return fromData(data, name: url.lastPathComponent, path: tilde(url.path))
     }
 
-    static func fromData(_ data: Data, name: String) -> QuickAIPendingImage? {
+    static func fromData(_ data: Data, name: String, path: String? = nil) -> QuickAIPendingImage? {
         guard let prepared = prepare(data) else { return nil }
         let preview = NSImage(data: prepared.png) ?? NSImage(size: NSSize(width: 1, height: 1))
-        return QuickAIPendingImage(name: name, preview: preview,
+        return QuickAIPendingImage(name: name, path: path, preview: preview,
                                    attachment: AIImageAttachment(dataURL: prepared.dataURL))
+    }
+
+    private static func tilde(_ path: String) -> String {
+        let home = NSHomeDirectory()
+        if path == home { return "~" }
+        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
+        return path
     }
 
     // MARK: Dragging helpers

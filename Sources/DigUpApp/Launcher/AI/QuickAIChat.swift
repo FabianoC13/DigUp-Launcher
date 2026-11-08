@@ -176,6 +176,12 @@ final class QuickAIChat {
             text = AIConversation.question(text, about: attachment.text)
             self.attachment = nil
         }
+        // Keep disk paths with the question so follow-ups like "where's this file?" aren't answered as "no path".
+        let paths = pending.compactMap(\.path)
+        if !paths.isEmpty {
+            if shown == nil { shown = text }
+            text = Self.questionWithImagePaths(text, paths: paths)
+        }
         // Images (now or earlier in the chat, which the request carries again) need a model that reads them.
         let withImages = !pending.isEmpty || turns.contains { !$0.images.isEmpty }
         let turnModel = withImages ? preferences.provider.model(forImages: model) : model
@@ -299,6 +305,15 @@ final class QuickAIChat {
         if command != nil || attachment != nil || !AIContinuity.continues(lastActivity: lastActivity, minutes: preferences.newChatAfter) {
             startNew()
         }
+    }
+
+    /// Paths for dropped files go with the question (shown UI keeps the user's wording via `shown`).
+    private static func questionWithImagePaths(_ question: String, paths: [String]) -> String {
+        let heading = paths.count == 1
+            ? "Attached image path on this Mac (use this when asked where the file is):"
+            : "Attached image paths on this Mac (use these when asked where the files are):"
+        let list = paths.map { "• \($0)" }.joined(separator: "\n")
+        return "\(question)\n\n\(heading)\n\(list)"
     }
 
     /// A saved chat, to read and continue.

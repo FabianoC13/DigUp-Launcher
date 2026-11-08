@@ -24,6 +24,8 @@ enum SearchPhase: Equatable {
 final class SearchPanelController {
     static let width: CGFloat = 780
     static let listWidth: CGFloat = 330
+    /// Continuous corner shared by the glass, the SwiftUI clip, and the window's alpha mask (so the shadow matches).
+    static let cornerRadius: CGFloat = 18
     static let fieldHeight: CGFloat = 56
     static let expandedHeight: CGFloat = 480
     static let rowsPerGroup = 6
@@ -170,6 +172,7 @@ final class SearchPanelController {
         if !window.isVisible { window.alphaValue = 0 }
         window.orderFrontRegardless()
         window.makeKey()
+        window.invalidateShadow()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Self.fadeIn
             window.animator().alphaValue = PanelAppearance.shared.look.opacity
@@ -854,6 +857,7 @@ final class SearchPanelController {
             frame.origin.y += frame.height - height
             frame.size.height = height
             window.setFrame(frame, display: true)
+            window.invalidateShadow()
         }
         // Grow immediately so a list never draws in the short search-field frame. Shrink on the next turn —
         // resizing down from inside a SwiftUI update can size the view wrong.
@@ -867,7 +871,7 @@ final class SearchPanelController {
     /// Glass (or vibrancy before macOS 26) behind the SwiftUI content. The content sits beside the glass rather than
     /// inside it, since NSGlassEffectView resizes its contentView itself.
     private static func background(containing content: NSView) -> PanelDropView {
-        let radius: CGFloat = 18
+        let radius = SearchPanelController.cornerRadius
         let backdrop: NSView
         if #available(macOS 26.0, *) {
             let glass = NSGlassEffectView()
@@ -880,10 +884,17 @@ final class SearchPanelController {
             effect.blendingMode = .behindWindow
             effect.wantsLayer = true
             effect.layer?.cornerRadius = radius
+            effect.layer?.cornerCurve = .continuous
             effect.layer?.masksToBounds = true
             backdrop = effect
         }
         let container = PanelDropView()
+        // Clip the whole stack (glass + SwiftUI) to the same continuous corner the SwiftUI view uses. Without this,
+        // AppKit's square window/shadow rim sticks out past the squircle fill.
+        container.wantsLayer = true
+        container.layer?.cornerRadius = radius
+        container.layer?.cornerCurve = .continuous
+        container.layer?.masksToBounds = true
         for view in [backdrop, content] {
             view.frame = container.bounds
             view.autoresizingMask = [.width, .height]
@@ -894,7 +905,7 @@ final class SearchPanelController {
 
     /// Draws the panel into a PNG (see `Snapshot`); the glass doesn't draw that way, so it's on the window color.
     func snapshot(to url: URL) throws {
-        try Snapshot.write(window, to: url, cornerRadius: 18)
+        try Snapshot.write(window, to: url, cornerRadius: Self.cornerRadius)
     }
 }
 

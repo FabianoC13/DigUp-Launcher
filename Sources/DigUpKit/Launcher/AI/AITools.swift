@@ -278,7 +278,9 @@ public enum AIMacToolCatalog {
         then describe what you see. Do not dig up old screenshots from Desktop or Downloads for that — those are \
         stale files, not the live display. \
         A specific photo or image file the user named (or the wallpaper image file itself): find its path if needed, \
-        then look_at_image. Do not guess from sips/python pixel dumps or open it in Preview.
+        then look_at_image. Do not guess from sips/python pixel dumps or open it in Preview. When a user message lists \
+        "Attached image path(s) on this Mac", those are the real file paths for the pictures in that message — quote \
+        them directly; do not say the images have no path or were only inline.
         """
 
     /// Expands `~` and `~/…` against the home directory; absolute paths pass through; relative paths are under home.

@@ -30,9 +30,10 @@ struct SearchPanelView: View {
         .overlay {
             if controller.dropTargeted {
                 // A picture over the panel: where it goes.
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: SearchPanelController.cornerRadius, style: .continuous)
                     .strokeBorder(Brand.amber, style: StrokeStyle(lineWidth: 3, dash: [9, 6]))
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Brand.ember.opacity(0.18)))
+                    .background(RoundedRectangle(cornerRadius: SearchPanelController.cornerRadius, style: .continuous)
+                        .fill(Brand.ember.opacity(0.18)))
                     .overlay {
                         Label("Drop to ask Quick AI about it", systemImage: "photo.badge.plus")
                             .font(.system(size: 16, weight: .semibold))
@@ -45,7 +46,7 @@ struct SearchPanelView: View {
         }
         // Glass alone is too see-through over busy backgrounds.
         .background(Color(nsColor: .windowBackgroundColor).opacity(PanelAppearance.shared.look.tint))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: SearchPanelController.cornerRadius, style: .continuous))
     }
 
     private var header: some View {
